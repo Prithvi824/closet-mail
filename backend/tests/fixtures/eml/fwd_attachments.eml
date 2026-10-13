@@ -1,0 +1,40 @@
+From: Dana <dana@example.com>
+To: shop.fox42@closetcompute.online
+Subject: Files attached
+Date: Sun, 11 Oct 2026 10:00:00 +0000
+Message-ID: <att0001@example.com>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="mix"
+
+--mix
+Content-Type: multipart/alternative; boundary="alt"
+
+--alt
+Content-Type: text/plain; charset="utf-8"
+
+See attached.
+--alt
+Content-Type: text/html; charset="utf-8"
+
+<html><body><p>See attached.</p></body></html>
+--alt--
+--mix
+Content-Type: application/pdf; name="report.pdf"
+Content-Disposition: attachment; filename="report.pdf"
+Content-Transfer-Encoding: base64
+
+JVBERi0xLjQKJSBzeW50aGV0aWMK
+--mix
+Content-Type: text/plain; name="notes.txt"
+Content-Disposition: attachment; filename="notes.txt"
+
+attached notes, not a body
+--mix
+Content-Type: message/rfc822
+
+From: Eve <eve@example.com>
+To: dana@example.com
+Subject: Inner forwarded mail
+
+Inner body must stay untouched.
+--mix--

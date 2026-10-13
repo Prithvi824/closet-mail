@@ -1,0 +1,33 @@
+# secrets
+.env
+deploy/.env
+.env.prod
+
+# python
+.venv/
+__pycache__/
+
+# node
+node_modules/
+dist/
+.wrangler/
+
+# runtime / local
+logs/
+.env.local
+*.local.eml
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# personal planning and operator notes (kept locally, never published)
+/plans/
+/reports/
+/research_notes/
+/scripts/
+/docs/infrastructure-setup.md
+/docs/product-plan.md
+/docs/spikes.md
+
+# real Worker config (holds account-specific ids); edge/wrangler.example.toml is the template
+/edge/wrangler.toml

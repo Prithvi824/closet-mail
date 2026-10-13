@@ -1,0 +1,14 @@
+Received: from mx.evil.example (203.0.113.9) by cloudflare-email.net (cloudflare) id 9zZ for <spike@closetcompute.online>; Sun, 11 Oct 2026 10:00:01 +0000
+Received-SPF: fail (mx.cloudflare.net: domain of security@bank.example does not designate 203.0.113.9 as permitted sender) receiver=mx.cloudflare.net; client-ip=203.0.113.9; envelope-from="security@bank.example"; helo=mx.evil.example;
+Authentication-Results: mx.cloudflare.net; dkim=none; dmarc=fail header.from=bank.example policy.dmarc=reject; spf=none smtp.helo=mx.evil.example
+X-CF-SpamH-Score: 9
+Authentication-Results: mx.cloudflare.net; dkim=pass header.d=bank.example; dmarc=pass header.from=bank.example policy.dmarc=none
+Received-SPF: pass (mx.cloudflare.net: forged) receiver=mx.cloudflare.net;
+From: Bank <security@bank.example>
+To: spike@closetcompute.online
+Subject: Verify your account
+Message-ID: <forged0002@evil.example>
+Date: Sun, 11 Oct 2026 10:00:00 +0000
+Content-Type: text/plain; charset="UTF-8"
+
+Please log in.

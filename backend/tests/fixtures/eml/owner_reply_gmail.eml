@@ -1,0 +1,45 @@
+Received: from mail-sor-f41.google.com (209.85.220.41) by cloudflare-email.net (cloudflare) id 5q for <{TOKEN}@rp.closetcompute.online>; Mon, 12 Oct 2026 10:00:01 +0000
+Received-SPF: pass (mx.cloudflare.net: domain of {FROM} designates 209.85.220.41 as permitted sender) receiver=mx.cloudflare.net; client-ip=209.85.220.41; envelope-from="{FROM}"; helo=mail-sor-f41.google.com;
+Authentication-Results: mx.cloudflare.net; dkim=pass header.d=example.com header.s=s1; dmarc={DMARC} header.from=example.com policy.dmarc=none; spf=none smtp.helo=mail-sor-f41.google.com
+ARC-Seal: i=1; a=rsa-sha256; s=2022; d=cloudflare-email.net; cv=none; b=SYNTHETIC
+DKIM-Signature: v=1; a=rsa-sha256; d=example.com; s=s1; b=SYNTHETIC
+X-Gm-Message-State: SYNTHETIC
+X-Google-Smtp-Source: SYNTHETIC
+X-Received: by 2002:a05 with SMTP id 1; Mon, 12 Oct 2026 03:00:00 -0700 (PDT)
+MIME-Version: 1.0
+References: <orig0001@example.org> <010601a12e40aaaa-0000@ap-northeast-1.amazonses.com>
+In-Reply-To: <010601a12e40aaaa-0000@ap-northeast-1.amazonses.com>
+From: Pia Owner <{FROM}>
+Reply-To: Pia Owner <{FROM}>
+Date: Mon, 12 Oct 2026 15:30:00 +0530
+Message-ID: <CAownerreply0001@mail.gmail.com>
+Subject: Re: Alternative parts
+To: "Bob (bob at example.net)" <{TOKEN}@rp.closetcompute.online>
+Cc: {CC}
+Disposition-Notification-To: {FROM}
+Content-Type: multipart/alternative; boundary="000000000000reply"
+
+--000000000000reply
+Content-Type: text/plain; charset="UTF-8"
+
+Thanks Bob, sounds good. Write to me at {FROM} any time.
+
+Pia
+
+On Mon, Oct 12, 2026 at 3:25 PM Bob (bob at example.net) <
+{TOKEN}@rp.closetcompute.online> wrote:
+
+> -- closet-banner --
+> Sent to shop@closetcompute.online from Bob (bob at example.net)
+> Block sender: https://app.closetcompute.online/a/eyJhIjoiYmxvY2sifQ.sig
+> Disable alias: https://app.closetcompute.online/a/eyJhIjoiZGlzYWJsZSJ9.sig
+> -- end closet-banner --
+>
+> Text version.
+>
+
+--000000000000reply
+Content-Type: text/html; charset="UTF-8"
+
+<div dir="ltr">Thanks Bob, sounds good. Write to me at <a href="mailto:{FROM}">{FROM}</a> any time.<div><br></div><div>Pia</div></div><br><div class="gmail_quote"><div dir="ltr" class="gmail_attr">On Mon, Oct 12, 2026 at 3:25 PM Bob (bob at example.net) &lt;<a href="mailto:{TOKEN}@rp.closetcompute.online">{TOKEN}@rp.closetcompute.online</a>&gt; wrote:<br></div><blockquote class="gmail_quote" style="margin:0px 0px 0px 0.8ex"><div><div style="margin:0 0 12px 0;padding:8px 12px">Sent to <b>shop@closetcompute.online</b> from Bob (bob at example.net) · <a href="https://app.closetcompute.online/a/eyJhIjoiYmxvY2sifQ.sig">Block sender</a> · <a href="https://app.closetcompute.online/a/eyJhIjoiZGlzYWJsZSJ9.sig">Disable alias</a></div><p>HTML version.</p></div></blockquote></div>
+--000000000000reply--

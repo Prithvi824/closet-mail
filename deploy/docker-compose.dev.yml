@@ -1,0 +1,33 @@
+# Local development dependencies. Start with: make dev-up
+name: mailalias-dev
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: mailalias
+      POSTGRES_USER: mailalias
+      POSTGRES_PASSWORD: mailalias
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mailalias -d mailalias"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    ports:
+      - "127.0.0.1:6380:6379"
+
+  rspamd:
+    image: rspamd/rspamd:4.2.1
+    ports:
+      - "127.0.0.1:11333:11333"
+    volumes:
+      - ./rspamd:/etc/rspamd/local.d:ro
+
+volumes:
+  pgdata:

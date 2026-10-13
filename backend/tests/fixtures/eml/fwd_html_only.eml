@@ -1,0 +1,11 @@
+From: News <news@shop.example>
+To: shop.fox42@closetcompute.online
+Subject: Weekly deals
+Date: Sun, 11 Oct 2026 10:00:00 +0000
+Message-ID: <html0001@shop.example>
+List-Unsubscribe: <mailto:unsub-123@shop.example?subject=unsub>, <https://shop.example/u/123>
+List-Unsubscribe-Post: List-Unsubscribe=One-Click
+MIME-Version: 1.0
+Content-Type: text/html; charset="utf-8"
+
+<!DOCTYPE html><html><head><title>Deals</title></head><body class="main"><p>Big deals</p><img src="https://cdn.shop.example/hero.jpg" width="600" alt="hero"><img src="https://shop.example/o.gif" width="1" height="1"><img src="https://u1.list-manage.com/track/open.php?u=1"><img src="https://shop.example/p.gif" style="display:none"><img src="https://shop.example/q.gif" style="width:0px;height:0px"></body></html>

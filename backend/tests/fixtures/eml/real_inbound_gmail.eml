@@ -1,0 +1,38 @@
+Received: from mail-sor-f41.google.com (209.85.220.41) by cloudflare-email.net (cloudflare) id 3kP0aBcDeF12 for <spike@closetcompute.online>; Sun, 11 Oct 2026 10:38:30 +0000
+ARC-Seal: i=1; a=rsa-sha256; s=2022; d=cloudflare-email.net; cv=none; b=SYNTHETICSEAL
+ARC-Message-Signature: i=1; a=rsa-sha256; s=2022; d=cloudflare-email.net; c=relaxed/relaxed; h=From:To:Subject:Date; bh=SYNTHETICBH; b=SYNTHETICSIG
+ARC-Authentication-Results: i=1; mx.cloudflare.net;
+ dkim=pass header.d=gmail.com header.s=20230601 header.b=AbCdEfGh;
+ dmarc=pass header.from=gmail.com policy.dmarc=none;
+ spf=none (mx.cloudflare.net: no SPF records found for postmaster@mail-sor-f41.google.com) smtp.helo=mail-sor-f41.google.com
+Received-SPF: pass (mx.cloudflare.net: domain of alice@gmail.com designates 209.85.220.41 as permitted sender) receiver=mx.cloudflare.net; client-ip=209.85.220.41; envelope-from="alice@gmail.com"; helo=mail-sor-f41.google.com;
+Authentication-Results: mx.cloudflare.net;
+ dkim=pass header.d=gmail.com header.s=20230601 header.b=AbCdEfGh;
+ dmarc=pass header.from=gmail.com policy.dmarc=none;
+ spf=none (mx.cloudflare.net: no SPF records found for postmaster@mail-sor-f41.google.com) smtp.helo=mail-sor-f41.google.com
+X-CF-SpamH-Score: 1
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=gmail.com; s=20230601; h=to:subject:message-id:date:from:mime-version; bh=SYNTHETICBH; b=SYNTHETICSIG
+X-Google-DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=1e100.net; s=20230601; b=SYNTHETIC
+X-Gm-Message-State: SYNTHETICSTATE
+X-Google-Smtp-Source: SYNTHETICSOURCE
+X-Received: by 2002:a05:6000:1:b0:1:1 with SMTP id 1; Sun, 11 Oct 2026 03:38:29 -0700 (PDT)
+MIME-Version: 1.0
+From: Alice Example <alice@gmail.com>
+Date: Sun, 11 Oct 2026 16:08:18 +0530
+X-Gm-Features: SYNTHETIC
+Message-ID: <CAsynthetic0001@mail.gmail.com>
+Subject: Hello from Gmail
+To: spike@closetcompute.online
+Content-Type: multipart/alternative; boundary="000000000000synthetic0001"
+
+--000000000000synthetic0001
+Content-Type: text/plain; charset="UTF-8"
+
+Hi there, this is a test message.
+
+--000000000000synthetic0001
+Content-Type: text/html; charset="UTF-8"
+
+<div dir="ltr">Hi there, this is a test message.</div>
+
+--000000000000synthetic0001--

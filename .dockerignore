@@ -1,0 +1,20 @@
+# Build contexts are the repo root; send only what the images need.
+**/.venv
+**/node_modules
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/logs
+**/dist
+**/.wrangler
+**/.env
+**/.env.*
+!deploy/.env.example
+.git
+research_notes
+reports
+plans
+docs
+edge
+backend/tests

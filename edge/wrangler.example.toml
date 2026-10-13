@@ -1,0 +1,22 @@
+# edge-inbound: Cloudflare Email Worker that gates and buffers inbound mail.
+# Copy to wrangler.toml, set the KV namespace id, then `npx wrangler deploy`.
+# The Worker is wired to the Email Routing catch-all rule of the zone.
+name = "edge-inbound"
+main = "src/index.ts"
+compatibility_date = "2026-09-30"
+workers_dev = false
+
+[observability]
+enabled = true
+
+[[kv_namespaces]]
+binding = "ALIASES"
+id = "YOUR_KV_NAMESPACE_ID"   # CF_KV_NAMESPACE_ID
+
+[[r2_buckets]]
+binding = "INBOX"
+bucket_name = "mail-inbox"
+
+[[queues.producers]]
+binding = "INBOUND"
+queue = "mail-inbound"

@@ -1,0 +1,91 @@
+# Production stack. Uses only prebuilt images from GHCR (published by CI); no source on the host.
+# deploy.sh copies this file with .env and .env.prod into one directory on the host, then runs
+#   docker compose pull && docker compose up -d
+# Interpolation reads .env (PROD_DATABASE_URL, IMAGE_TAG). Containers get .env + .env.prod.
+name: mailalias
+
+x-backend: &backend
+  image: ghcr.io/prithvi824/closet-mail-backend:${IMAGE_TAG:-latest}
+  env_file: [.env, .env.prod]
+  environment:
+    DATABASE_URL: ${PROD_DATABASE_URL:?set PROD_DATABASE_URL in deploy/.env}
+    REDIS_URL: redis://global-redis:6379/3
+    RSPAMD_URL: http://rspamd:11333
+    LOG_DIR: /app/logs
+  networks: [global, mailalias]
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options: { max-size: 10m, max-file: "3" }
+
+services:
+  migrate:
+    <<: *backend
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+
+  api:
+    <<: *backend
+    command:
+      ["uvicorn", "mailalias.api.app:create_app", "--factory",
+       "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--no-server-header"]
+    mem_limit: 256m
+    volumes: ["./logs/api:/app/logs/api"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  processor:
+    <<: *backend
+    command: ["mailalias", "processor"]
+    mem_limit: 256m
+    volumes: ["./logs/processor:/app/logs/processor"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      rspamd: { condition: service_started }
+
+  worker:
+    <<: *backend
+    # -B runs the beat scheduler in the same process (KV reconcile, retention, monitor, backup).
+    command: ["celery", "-A", "mailalias.tasks.celery_app", "worker", "-B",
+              "--concurrency", "2", "--loglevel", "INFO",
+              "--schedule", "/app/logs/worker/celerybeat-schedule"]
+    mem_limit: 384m
+    volumes: ["./logs/worker:/app/logs/worker"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  rspamd:
+    # Official Rspamd image with deploy/rspamd baked in (deploy/docker/rspamd.Dockerfile).
+    image: ghcr.io/prithvi824/closet-mail-rspamd:${IMAGE_TAG:-latest}
+    # Private network only: no published ports; outbound DNS stays available for SPF/DKIM checks.
+    networks: [mailalias]
+    mem_limit: 512m
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: { max-size: 10m, max-file: "3" }
+
+  web:
+    image: ghcr.io/prithvi824/closet-mail-web:${IMAGE_TAG:-latest}
+    # Only the Cloudflare tunnel on this host should reach the app.
+    ports: ["127.0.0.1:8080:8080"]
+    networks: [mailalias]
+    mem_limit: 128m
+    restart: unless-stopped
+    depends_on:
+      api: { condition: service_healthy }
+    logging:
+      driver: json-file
+      options: { max-size: 10m, max-file: "3" }
+
+networks:
+  global:
+    external: true
+    name: global-network
+  mailalias: {}

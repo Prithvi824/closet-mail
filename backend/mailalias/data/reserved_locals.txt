@@ -1,0 +1,12 @@
+# Local parts nobody may claim as an alias (RFC 2142 role accounts and system senders).
+postmaster
+abuse
+dmarc
+hostmaster
+webmaster
+noreply
+admin
+root
+security
+support
+mailer-daemon

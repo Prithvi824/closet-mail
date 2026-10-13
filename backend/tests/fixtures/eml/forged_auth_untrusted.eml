@@ -1,0 +1,10 @@
+Authentication-Results: evil.example; dkim=pass header.d=bank.example; dmarc=pass header.from=bank.example policy.dmarc=reject; spf=pass smtp.mailfrom=bank.example
+Received-SPF: pass (evil.example: domain of x@bank.example designates 1.2.3.4 as permitted sender) receiver=evil.example;
+From: Bank <security@bank.example>
+To: spike@closetcompute.online
+Subject: Verify your account
+Message-ID: <forged0001@evil.example>
+Date: Sun, 11 Oct 2026 10:00:00 +0000
+Content-Type: text/plain; charset="UTF-8"
+
+Please log in.

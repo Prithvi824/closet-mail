@@ -1,0 +1,20 @@
+From: Gina <gina@example.org>
+To: shop.fox42@closetcompute.online
+Subject: Signed message
+Date: Sun, 11 Oct 2026 10:00:00 +0000
+Message-ID: <signed0001@example.org>
+MIME-Version: 1.0
+Content-Type: multipart/signed; micalg=pgp-sha256; protocol="application/pgp-signature"; boundary="sig"
+
+--sig
+Content-Type: text/plain; charset="utf-8"
+
+This text is signed.
+--sig
+Content-Type: application/pgp-signature; name="signature.asc"
+Content-Disposition: attachment; filename="signature.asc"
+
+-----BEGIN PGP SIGNATURE-----
+c3ludGhldGlj
+-----END PGP SIGNATURE-----
+--sig--

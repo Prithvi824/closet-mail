@@ -1,0 +1,21 @@
+Received: from mx.example.org (198.51.100.1) by cloudflare-email.net (cloudflare) id 1 for <shop.fox42@closetcompute.online>; Sun, 11 Oct 2026 10:00:01 +0000
+Authentication-Results: mx.cloudflare.net; dkim=pass header.d=example.org; dmarc=pass header.from=example.org policy.dmarc=none
+DKIM-Signature: v=1; a=rsa-sha256; d=example.org; s=s1; b=SYNTHETIC
+Return-Path: <alice@example.org>
+Delivered-To: shop.fox42@closetcompute.online
+X-Original-To: shop.fox42@closetcompute.online
+Disposition-Notification-To: alice@example.org
+X-Closet-Alias: spoofed@closetcompute.online
+From: Alice Example <alice@example.org>
+To: shop.fox42@closetcompute.online
+Cc: Carol <carol@example.org>
+Subject: Plain hello
+Date: Sun, 11 Oct 2026 10:00:00 +0000
+Message-ID: <plain0001@example.org>
+In-Reply-To: <older0001@example.org>
+References: <root0001@example.org> <older0001@example.org>
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+
+Hello, this is plain text.
