@@ -33,6 +33,7 @@ Sender → Cloudflare Email Routing → edge Worker (KV check) → R2 + Queue
 | `backend/` | Python 3.12 package `mailalias`: FastAPI API, mail processor, Celery worker (uv-managed) |
 | `edge/` | `edge-inbound` Cloudflare Email Worker (TypeScript, wrangler) |
 | `web/` | Dashboard SPA (Vite, React 19, TypeScript, TanStack Query, shadcn/ui) |
+| `landing/` | Public landing page for the apex domain (Astro, Tailwind, Motion, Magic UI), deployed to Cloudflare Pages |
 | `deploy/` | Dockerfiles, production and dev compose files, Caddyfile, Rspamd config, deploy scripts |
 | `docs/runbook.md` | Deploy, webhooks, backups and restore, monitoring |
 
@@ -46,6 +47,7 @@ make dev-up                          # Postgres :5433, Redis :6380, Rspamd :1133
 cd backend && uv sync && uv run pytest
 cd edge && npm ci && npm test
 cd web && npm ci && npm run dev      # proxies the API on :8000
+cd landing && npm ci && npm run dev  # landing page on :4321
 ```
 
 | Task | Command |
@@ -58,7 +60,7 @@ cd web && npm ci && npm run dev      # proxies the API on :8000
 
 ## Deployment
 
-CI publishes the production images to GHCR on every push to `main`. The server only pulls images: no source code is copied there. See [`docs/runbook.md`](docs/runbook.md).
+CI publishes the production images to GHCR on every push to `main`. The server only pulls images: no source code is copied there. The landing page is a static site that CI publishes to Cloudflare Pages. See [`docs/runbook.md`](docs/runbook.md).
 
 ## Security
 

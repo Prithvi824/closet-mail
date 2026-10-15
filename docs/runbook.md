@@ -96,3 +96,21 @@ The Worker is deployed from a workstation, not CI, so the Cloudflare token stays
 cp edge/wrangler.example.toml edge/wrangler.toml   # once; set the KV namespace id (gitignored)
 cd edge && npx wrangler deploy
 ```
+
+## Landing page
+
+`landing/` is a static Astro site served by Cloudflare Pages (project `closet-mail-landing`) on the apex domain. Site-wide facts such as the invite address live in `landing/src/lib/site.ts`.
+
+**One-time setup:**
+
+1. Create the project: `cd landing && npx wrangler pages project create closet-mail-landing --production-branch main`.
+2. Deploy once (below), then in the dashboard open Workers & Pages → `closet-mail-landing` → Custom domains and add the apex domain. Delete any existing A/AAAA/CNAME record on the apex first. Cloudflare then creates the CNAME itself. MX and TXT records stay as they are.
+3. For CI deploys, create a **separate** API token with only *Account → Cloudflare Pages → Edit*, and add it to the GitHub repository secrets as `CLOUDFLARE_API_TOKEN`, along with `CLOUDFLARE_ACCOUNT_ID`. Never use the main token here. Without these secrets, CI still builds the site and skips the deploy.
+
+**Deploy by hand** (from a workstation, using the same narrow token):
+
+```sh
+cd landing && npm run build && npm run deploy
+```
+
+The invite buttons open a pre-filled email to the invite address. That address must accept mail: its subdomain needs Email Routing enabled, and the alias must exist (or the subdomain catch-all must be on).

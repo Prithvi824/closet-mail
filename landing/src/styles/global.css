@@ -1,0 +1,90 @@
+@import "tailwindcss";
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
+@import "@fontsource/instrument-serif/400.css";
+@import "@fontsource/instrument-serif/400-italic.css";
+
+/* One deliberate dark look: near-black canvas, hairline borders, a single pale-ice accent. */
+@theme {
+  --color-canvas: #08090b;
+  --color-surface: #0f1114;
+  --color-surface-2: #15181c;
+  --color-line: rgb(236 240 255 / 0.08);
+  --color-line-strong: rgb(236 240 255 / 0.16);
+  --color-fg: #ecedf0;
+  --color-muted: #8a8f99;
+  --color-dim: #5c616b;
+  --color-ice: #a9d4ff;
+  --color-ok: #7ee2b8;
+  --color-warn: #f5c76b;
+
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --font-display: "Instrument Serif", "Times New Roman", serif;
+
+  --animate-beam: beam 2.4s linear infinite;
+  --animate-blink: blink 1s steps(1) infinite;
+
+  @keyframes beam {
+    from { top: -40%; }
+    to { top: 100%; }
+  }
+  @keyframes blink {
+    50% { opacity: 0; }
+  }
+}
+
+@layer base {
+  :root { color-scheme: dark; }
+  html { scroll-behavior: smooth; }
+  body {
+    @apply bg-canvas font-sans text-fg antialiased;
+    overflow-x: hidden;
+  }
+  h1, h2, h3 { text-wrap: balance; }
+  :focus-visible { outline: 2px solid var(--color-ice); outline-offset: 3px; border-radius: 8px; }
+  /* Italic serif accent word inside headings. */
+  h1 em, h2 em { font-family: var(--font-display); font-style: italic; font-weight: 400; letter-spacing: -0.01em; }
+}
+
+@layer components {
+  .gutter {
+    @apply mx-auto w-full max-w-[1120px];
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  .eyebrow { @apply font-mono text-xs tracking-[0.12em] text-muted uppercase; }
+  .lede { @apply max-w-[60ch] text-[17px] leading-relaxed text-muted; }
+  .h2 { @apply text-[clamp(30px,4.4vw,46px)] leading-[1.08] font-medium tracking-[-0.025em]; }
+  .btn {
+    @apply inline-flex h-10 items-center gap-2 rounded-full border border-line-strong px-[18px] text-sm font-medium transition;
+  }
+  .btn-sm { @apply h-[34px] px-3.5 text-[13px]; }
+  .btn-primary { @apply border-fg bg-fg text-canvas hover:-translate-y-px hover:bg-white; }
+  .btn-ghost { @apply text-fg hover:bg-white/5; }
+  .tag { @apply font-mono text-[11px] tracking-[0.08em] text-dim uppercase; }
+  .env-box {
+    @apply min-w-0 rounded-xl border border-line bg-canvas px-3.5 py-3 font-mono text-xs leading-[1.7] [overflow-wrap:anywhere];
+  }
+}
+
+/* Sections fade up as they scroll in, where the browser supports scroll-driven animations.
+   Content is fully visible without it. */
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .reveal {
+      animation: reveal linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 40%;
+    }
+    @keyframes reveal {
+      from { opacity: 0.2; transform: translateY(24px); }
+      to { opacity: 1; transform: none; }
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  html { scroll-behavior: auto; }
+}

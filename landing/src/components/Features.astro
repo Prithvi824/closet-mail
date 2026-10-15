@@ -1,0 +1,138 @@
+---
+/** Feature grid: tiles of different sizes, each with a small picture of the feature at work. */
+import { MagicCard } from "./ui/MagicCard";
+import { SITE } from "@/lib/site";
+
+const tile = "rounded-[18px] p-6 [&_h3]:text-lg [&_h3]:font-medium [&_h3]:tracking-tight [&_p]:max-w-[46ch] [&_p]:text-[14.5px] [&_p]:text-muted";
+const art = "mt-auto pt-4.5";
+const queueBars = [30, 45, 38, 70, 85, 60, 40, 28, 34, 22];
+const heldBars = new Set([3, 4, 5]);
+---
+
+<section id="features" class="border-t border-line py-18 sm:py-24">
+  <div class="gutter">
+    <div class="reveal mb-12 flex max-w-[720px] flex-col gap-4">
+      <span class="eyebrow">Features</span>
+      <h2 class="h2">Everything an alias needs, <em>nothing</em> it leaks.</h2>
+    </div>
+    <div class="grid gap-3.5 sm:grid-cols-6">
+      <MagicCard client:visible className={`${tile} sm:col-span-6 lg:col-span-4`}>
+        <span class="tag">Anonymous replies</span>
+        <h3>Reply from Gmail. Arrive as the alias.</h3>
+        <p>
+          Your address is removed from the headers and the quoted text, and the banner is stripped before it leaves.
+          Only your verified inboxes can reply, and they must pass DMARC.
+        </p>
+        <div class={`${art} grid items-center gap-3 sm:grid-cols-[1fr_auto_1fr]`} aria-hidden="true">
+          <div class="env-box">
+            <span class="text-dim">From:</span> <span class="text-dim line-through">you@gmail.com</span><br />
+            <span class="text-dim">To:</span> k7q2…@rp.{SITE.domain}
+          </div>
+          <span class="justify-self-center text-lg text-ice max-sm:rotate-90">→</span>
+          <div class="env-box">
+            <span class="text-dim">From:</span> river.lamp42@{SITE.domain}<br />
+            <span class="text-dim">To:</span> orders@shop.example
+          </div>
+        </div>
+      </MagicCard>
+
+      <MagicCard client:visible className={`${tile} sm:col-span-3 lg:col-span-2`}>
+        <span class="tag">Spam quarantine</span>
+        <h3>Suspicious mail waits for you</h3>
+        <p>Rspamd scores every message. Borderline mail is held, encrypted, for 7 days.</p>
+        <div class={`${art} grid gap-2`} aria-hidden="true">
+          <div class="flex justify-between font-mono text-xs"><span>Rspamd score</span><b class="font-medium text-warn">7.4 · held</b></div>
+          <div class="relative h-2 rounded-full bg-linear-to-r from-ok/35 via-warn/45 to-[rgb(255_120_110/0.5)]">
+            <span class="absolute top-1/2 left-[49%] size-3.5 -translate-1/2 rounded-full border-3 border-canvas bg-fg"></span>
+          </div>
+          <div class="flex justify-between font-mono text-[11px] text-dim"><span>0</span><span>6 hold</span><span>15 drop</span></div>
+        </div>
+      </MagicCard>
+
+      <MagicCard client:visible className={`${tile} sm:col-span-3 lg:col-span-2`}>
+        <span class="tag">Your own subdomain</span>
+        <h3>Make up aliases on the spot</h3>
+        <p>Turn on catch-all and any address on your subdomain works the first time someone uses it.</p>
+        <div class={`${art} grid gap-1.5 font-mono text-xs`} aria-hidden="true">
+          {
+            ["bakery", "gym"].map((local) => (
+              <div class="flex justify-between gap-2.5 border-b border-line pb-1.5">
+                <span class="min-w-0 break-words">{local}@<wbr />you.{SITE.domain}</span>
+                <span class="whitespace-nowrap text-ok">created</span>
+              </div>
+            ))
+          }
+        </div>
+      </MagicCard>
+
+      <MagicCard client:visible className={`${tile} sm:col-span-3 lg:col-span-2`}>
+        <span class="tag">PGP</span>
+        <h3>Encrypted before it leaves</h3>
+        <p>Upload a public key and forwarded mail is encrypted to it, subject line included if you like.</p>
+        <div
+          class={`${art} font-mono text-[11px] leading-[1.55] break-all text-dim mask-b-from-55%`}
+          aria-hidden="true"
+        >
+          <span class="text-fg">-----BEGIN PGP MESSAGE-----</span><br />
+          hQIMA8f2kq1Vd0yJARAAp3XkH9zR2mWq1o8YbLsTnE4cVf7uGx0aJ2iK5wQe9hNrPz3tBdMoU6yC1lA8fS4vX7jR0nKqH2eW9pZ5mT3gL6bY8cD1oI4uE7sQ0vA2xF9hJ5kN3rM6tP8wB1zG4yC7dV0lS2eU5iO9aR3jH6kX8nQ1mT4fW7pY0zB3gL5vC8sE2dI6oA9uK1rN4tM7
+        </div>
+      </MagicCard>
+
+      <MagicCard client:visible className={`${tile} sm:col-span-6 lg:col-span-2`}>
+        <span class="tag">Sign-in</span>
+        <h3>Passkeys and authenticator codes</h3>
+        <p>Accounts are invite only. Add a passkey or a TOTP app, with backup codes for a bad day.</p>
+        <div class={`${art} flex flex-wrap gap-2`} aria-hidden="true">
+          {
+            ["Passkey", "TOTP", "Backup codes"].map((key) => (
+              <span class="rounded-[10px] border border-line-strong bg-linear-to-b from-surface-2 to-canvas px-3 py-2 font-mono text-xs shadow-[inset_0_-2px_0_rgb(0_0_0/0.5)]">
+                {key}
+              </span>
+            ))
+          }
+        </div>
+      </MagicCard>
+
+      <MagicCard client:visible className={`${tile} sm:col-span-3`}>
+        <span class="tag">Tracker removal</span>
+        <h3>Read receipts you never agreed to, gone</h3>
+        <p>Invisible tracking pixels and known tracking hosts are stripped from every forwarded message.</p>
+        <div class={`${art} text-[40px] leading-none tracking-[-0.03em] tabular-nums`}>
+          3<small class="ml-1.5 align-middle text-sm tracking-normal text-muted">trackers removed from one receipt</small>
+        </div>
+      </MagicCard>
+
+      <MagicCard client:visible className={`${tile} sm:col-span-3`}>
+        <span class="tag">Never drops mail</span>
+        <h3>Server down? Your mail waits.</h3>
+        <p>Mail is accepted and held at the edge, then delivered once the server is back. Unknown addresses are refused on the spot.</p>
+        <div class={`${art} flex h-[62px] items-end gap-1`} aria-hidden="true">
+          {
+            queueBars.map((height, position) => (
+              <i
+                class:list={["block flex-1 rounded-[3px]", heldBars.has(position) ? "bg-ice/70" : "bg-line-strong"]}
+                style={`height: ${height}%`}
+              />
+            ))
+          }
+        </div>
+      </MagicCard>
+
+      <MagicCard client:visible className={`${tile} sm:col-span-6 lg:col-span-2`}>
+        <span class="tag">Blocking</span>
+        <h3>Block a sender, or a whole domain</h3>
+        <p>From the banner, the dashboard or the blocklist. Turned-off aliases drop mail quietly.</p>
+      </MagicCard>
+      <MagicCard client:visible className={`${tile} sm:col-span-3 lg:col-span-2`}>
+        <span class="tag">Bounces</span>
+        <h3>Know when mail fails</h3>
+        <p>Bounces and complaints show up under failed deliveries. A dead inbox is paused after three hard bounces.</p>
+      </MagicCard>
+      <MagicCard client:visible className={`${tile} sm:col-span-3 lg:col-span-2`}>
+        <span class="tag">Organise</span>
+        <h3>Labels, search and bulk actions</h3>
+        <p>Describe each alias, tag it, and switch a hundred off at once.</p>
+      </MagicCard>
+    </div>
+  </div>
+</section>

@@ -31,3 +31,6 @@ logs/
 
 # real Worker config (holds account-specific ids); edge/wrangler.example.toml is the template
 /edge/wrangler.toml
+
+# astro
+.astro/

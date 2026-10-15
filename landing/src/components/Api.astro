@@ -1,0 +1,30 @@
+---
+/** API section: what tokens can do, with a tabbed "create an alias" example. */
+import { CodeTabs } from "./CodeTabs";
+import { API_SAMPLES } from "@/lib/apiExamples";
+---
+
+<section id="api" class="border-t border-line py-18 sm:py-24">
+  <div class="gutter grid items-center gap-12 lg:grid-cols-[0.9fr_1.1fr]">
+    <div class="reveal flex min-w-0 flex-col gap-4.5">
+      <span class="eyebrow">API</span>
+      <h2 class="h2">Make aliases from <em>anywhere.</em></h2>
+      <p class="lede">Every dashboard action is available over a REST API. Create tokens with only the permissions a script needs.</p>
+      <ul class="mt-1.5 grid gap-2.5 text-[15px] text-muted">
+        {
+          ["Scoped tokens: aliases, recipients, contacts", "Optional expiry on every token", "Rate-limit headers on every response"].map(
+            (point) => (
+              <li class="flex gap-2.5">
+                <span class="text-ice" aria-hidden="true">→</span>
+                {point}
+              </li>
+            ),
+          )
+        }
+      </ul>
+    </div>
+    <div class="reveal min-w-0">
+      <CodeTabs client:visible tabs={API_SAMPLES} />
+    </div>
+  </div>
+</section>

@@ -1,0 +1,37 @@
+---
+/** What is and isn't stored, in three short points. */
+const points = [
+  {
+    title: "Nothing kept after delivery",
+    body: "A message is deleted from the buffer as soon as it is forwarded. Logs record counts and outcomes, never subjects, bodies or addresses.",
+  },
+  {
+    title: "Encrypted at rest",
+    body: "Real addresses, descriptions and quarantined mail are encrypted in the database. Nightly backups are encrypted too.",
+  },
+  {
+    title: "Open source",
+    body: "Every line is on GitHub under AGPL-3.0. Read it, audit it, or run your own copy.",
+  },
+];
+---
+
+<section id="privacy" class="border-t border-line py-18 sm:py-24">
+  <div class="gutter">
+    <div class="reveal mb-12 flex max-w-[720px] flex-col gap-4">
+      <span class="eyebrow">Privacy</span>
+      <h2 class="h2">Built so we <em>can't</em> read your mail.</h2>
+      <p class="lede">Messages pass through and are deleted. What has to be stored is encrypted.</p>
+    </div>
+    <div class="grid gap-8 md:grid-cols-3">
+      {
+        points.map((point) => (
+          <div class="reveal flex flex-col gap-2 border-t border-line-strong pt-4.5">
+            <h3 class="text-[17px] font-medium">{point.title}</h3>
+            <p class="text-[14.5px] text-muted">{point.body}</p>
+          </div>
+        ))
+      }
+    </div>
+  </div>
+</section>

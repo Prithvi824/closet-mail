@@ -1,0 +1,113 @@
+---
+/** Opening section: the pitch on the left, one message's route through the service on the right. */
+import { AliasTyper } from "./AliasTyper";
+import InviteLink from "./InviteLink.astro";
+import { BorderBeam } from "./ui/BorderBeam";
+import { SITE } from "@/lib/site";
+
+const exampleAliases = ["river.lamp42", "k3v9x0qz1m", "maple.otter17", "news.signal08"] as const;
+const hops = [
+  { title: "A shop sends a receipt", detail: "orders@shop.example", icon: "mail" },
+  { title: "To the alias you gave them", detail: "alias", icon: "at" },
+  { title: "Spam check, trackers removed, banner added", detail: "score 1.2 · 2 trackers stripped", icon: "shield" },
+  { title: "Lands in your inbox", detail: "you@your-real-inbox", icon: "inbox" },
+] as const;
+const icons: Record<(typeof hops)[number]["icon"], string> = {
+  mail: '<path d="M4 4h16v16H4z"/><path d="m4 6 8 6 8-6"/>',
+  at: '<circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/>',
+  shield: '<path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/>',
+  inbox: '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5h13l3.5 7v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-6z"/>',
+};
+---
+
+<section class="relative overflow-hidden pt-14 pb-12 sm:pt-22 sm:pb-18">
+  <div
+    aria-hidden="true"
+    class="pointer-events-none absolute inset-x-[-10%] top-[-40%] h-[720px] bg-[radial-gradient(closest-side,rgb(169_212_255/0.10),transparent_70%)]"
+  >
+  </div>
+  <div class="gutter relative grid items-center gap-14 lg:grid-cols-[1.05fr_1fr]">
+    <div class="flex min-w-0 flex-col gap-6.5">
+      <span class="inline-flex items-center gap-2 self-start rounded-full border border-line bg-white/[0.02] py-1.5 pr-3 pl-1.5 text-[13px] text-muted">
+        <b class="rounded-full bg-ice px-2 text-xs font-medium text-canvas">Open source</b>
+        Self-hosted on {SITE.domain}
+      </span>
+      <h1 class="text-[clamp(42px,6.6vw,76px)] leading-none font-medium tracking-[-0.035em]">
+        A different address for <em>every</em> site you sign up to.
+      </h1>
+      <p class="lede">
+        closet-mail gives each website its own email alias. Mail reaches your real inbox, replies go out as the
+        alias, and your real address stays in the closet.
+      </p>
+      <div class="flex flex-wrap gap-3">
+        <InviteLink />
+        <a class="btn btn-ghost" href="#how">See how it works</a>
+      </div>
+      <p class="flex flex-wrap gap-x-4.5 gap-y-1 text-[13px] text-dim">
+        <span>Invite only</span><span aria-hidden="true">·</span><span>AGPL-3.0</span><span aria-hidden="true">·</span><span>Passkeys and TOTP</span>
+      </p>
+    </div>
+
+    <div
+      class="relative min-w-0 rounded-[18px] border border-line-strong bg-linear-to-b from-white/[0.035] to-white/[0.01] p-5 shadow-[0_40px_120px_-40px_rgb(0_0_0/0.8),inset_0_1px_0_rgb(255_255_255/0.06)]"
+      aria-label="Example of one email being forwarded"
+    >
+      <BorderBeam client:visible size={90} duration={9} />
+      <div class="flex items-center gap-2 border-b border-line pb-3.5 text-xs text-muted">
+        <span class="mr-1.5 flex gap-1.5" aria-hidden="true">
+          <i class="size-[9px] rounded-full bg-line-strong"></i><i class="size-[9px] rounded-full bg-line-strong"></i><i class="size-[9px] rounded-full bg-line-strong"></i>
+        </span>
+        One message, start to finish
+      </div>
+      <ol class="pt-4">
+        {
+          hops.map((hop, position) => (
+            <li>
+              {position > 0 && (
+                <div aria-hidden="true" class="relative ml-4 h-6.5 w-0.5 overflow-hidden bg-line">
+                  <span
+                    class="absolute left-0 h-[40%] w-full animate-beam bg-linear-to-b from-transparent via-ice to-transparent"
+                    style={`animation-delay: ${(position - 1) * 0.8}s`}
+                  />
+                </div>
+              )}
+              <div class="grid grid-cols-[34px_1fr] items-start gap-3.5">
+                <span
+                  class:list={[
+                    "grid size-[34px] place-items-center rounded-[10px] border",
+                    hop.icon === "at"
+                      ? "border-ice/40 bg-ice/15 text-ice"
+                      : "border-line-strong bg-surface text-muted",
+                  ]}
+                  aria-hidden="true"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" set:html={icons[hop.icon]} />
+                </span>
+                <div class="min-w-0 pb-1.5">
+                  <p class="text-[13px] text-muted">{hop.title}</p>
+                  <p class="font-mono text-[13.5px] [overflow-wrap:anywhere]">
+                    {hop.detail === "alias" ? (
+                      <>
+                        <AliasTyper client:visible aliases={exampleAliases} />@{SITE.domain}
+                      </>
+                    ) : (
+                      hop.detail
+                    )}
+                  </p>
+                </div>
+              </div>
+            </li>
+          ))
+        }
+      </ol>
+      <div class="env-box mt-3.5 overflow-x-auto text-[12.5px] leading-[1.75]" aria-label="Headers as your inbox sees them">
+        <div><span class="text-dim">From:</span> <span class="text-dim line-through">orders@shop.example</span></div>
+        <div>
+          <span class="text-dim">From:</span>
+          <span class="text-ice">"Shop (orders at shop.example)" &lt;k7q2m9x4d1p8w3za@rp.{SITE.domain}&gt;</span>
+        </div>
+        <div><span class="text-dim">X-Closet-Alias:</span> river.lamp42@{SITE.domain}</div>
+      </div>
+    </div>
+  </div>
+</section>

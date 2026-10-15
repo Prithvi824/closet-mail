@@ -1,0 +1,19 @@
+---
+/** Button that opens a pre-filled invite request in the visitor's mail app. */
+import { inviteMailto } from "@/lib/invite";
+
+interface Props {
+  variant?: "primary" | "ghost";
+  size?: "md" | "sm";
+  label?: string;
+}
+
+const { variant = "primary", size = "md", label = "Request an invite" } = Astro.props;
+---
+
+<a
+  class:list={["btn", variant === "primary" ? "btn-primary" : "btn-ghost", size === "sm" && "btn-sm"]}
+  href={inviteMailto()}
+>
+  {label}
+</a>

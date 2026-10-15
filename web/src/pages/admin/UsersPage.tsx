@@ -62,6 +62,7 @@ export function UsersPage() {
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-1">
+                        {isSelf ? <Badge variant="secondary">You</Badge> : null}
                         {user.role === "admin" ? <Badge>Admin</Badge> : null}
                         {user.disabled ? <Badge variant="destructive">Disabled</Badge> : null}
                         {user.limits ? <Badge variant="outline">Custom limits</Badge> : null}
@@ -72,40 +73,43 @@ export function UsersPage() {
                       {formatDateTime(user.created_at)}
                     </TableCell>
                     <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon-sm" aria-label={`Actions for ${user.username}`} disabled={isSelf}>
-                            <MoreHorizontalIcon />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onSelect={() =>
-                              void change(
-                                user,
-                                { role: user.role === "admin" ? "user" : "admin" },
-                                user.role === "admin" ? "Admin rights removed" : "Made admin",
-                              )
-                            }
-                          >
-                            {user.role === "admin" ? "Remove admin" : "Make admin"}
-                          </DropdownMenuItem>
-                          {user.limits ? (
-                            <DropdownMenuItem onSelect={() => void change(user, { limits: null }, "Limits reset")}>
-                              Reset limits
+                      {/* No actions on your own row: an admin must not disable or demote themselves. */}
+                      {isSelf ? null : (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon-sm" aria-label={`Actions for ${user.username}`}>
+                              <MoreHorizontalIcon />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onSelect={() =>
+                                void change(
+                                  user,
+                                  { role: user.role === "admin" ? "user" : "admin" },
+                                  user.role === "admin" ? "Admin rights removed" : "Made admin",
+                                )
+                              }
+                            >
+                              {user.role === "admin" ? "Remove admin" : "Make admin"}
                             </DropdownMenuItem>
-                          ) : null}
-                          {user.disabled ? (
-                            <DropdownMenuItem onSelect={() => void change(user, { disabled: false }, "User enabled")}>
-                              Enable
-                            </DropdownMenuItem>
-                          ) : (
-                            <DropdownMenuItem variant="destructive" onSelect={() => setDisabling(user)}>
-                              Disable
-                            </DropdownMenuItem>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                            {user.limits ? (
+                              <DropdownMenuItem onSelect={() => void change(user, { limits: null }, "Limits reset")}>
+                                Reset limits
+                              </DropdownMenuItem>
+                            ) : null}
+                            {user.disabled ? (
+                              <DropdownMenuItem onSelect={() => void change(user, { disabled: false }, "User enabled")}>
+                                Enable
+                              </DropdownMenuItem>
+                            ) : (
+                              <DropdownMenuItem variant="destructive" onSelect={() => setDisabling(user)}>
+                                Disable
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
                     </TableCell>
                   </TableRow>
                 );

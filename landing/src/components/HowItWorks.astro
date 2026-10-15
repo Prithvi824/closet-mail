@@ -1,0 +1,65 @@
+---
+/** The plain-language explainer: three real steps, each with a small picture of what the user sees. */
+import { SITE } from "@/lib/site";
+---
+
+<section id="how" class="border-t border-line py-18 sm:py-24">
+  <div class="gutter">
+    <div class="reveal mb-12 flex max-w-[720px] flex-col gap-4">
+      <span class="eyebrow">How it works</span>
+      <h2 class="h2">Your inbox, with a <em>front door</em> you control.</h2>
+      <p class="lede">You keep using the inbox you already have. closet-mail sits in front of it and decides what gets through.</p>
+    </div>
+    <ol class="grid gap-5 md:grid-cols-3">
+      <li class="reveal flex min-w-0 flex-col gap-3.5">
+        <div class="grid min-h-37 content-start gap-2.5 rounded-[14px] border border-line bg-surface p-4" aria-hidden="true">
+          {
+            [
+              ["Shop", "river.lamp42@…"],
+              ["Newsletter", "k3v9x0qz1m@…"],
+              ["Forum", "forum@you.…"],
+            ].map(([site, alias]) => (
+              <div class="flex flex-wrap gap-2">
+                <span class="rounded-full border border-line-strong bg-surface-2 px-2.5 py-1 text-xs text-muted">{site}</span>
+                <span class="rounded-full border border-line-strong bg-surface-2 px-2.5 py-1 font-mono text-xs">{alias}</span>
+              </div>
+            ))
+          }
+        </div>
+        <span class="font-mono text-xs text-ice">Step 1</span>
+        <h3 class="text-xl font-medium tracking-tight">Make an alias for each site</h3>
+        <p class="text-[15px] text-muted">Generate one in a click, or name it yourself. Signing up somewhere new never needs your real address again.</p>
+      </li>
+      <li class="reveal flex min-w-0 flex-col gap-3.5">
+        <div class="grid min-h-37 content-start gap-2.5 rounded-[14px] border border-line bg-surface p-4 text-[13px]" aria-hidden="true">
+          <div class="grid grid-cols-[28px_1fr_auto] items-center gap-2.5">
+            <span class="grid size-7 place-items-center rounded-full border border-line-strong bg-surface-2 text-[11px] text-muted">S</span>
+            <div class="min-w-0">
+              <p class="truncate font-medium">Shop</p>
+              <p class="truncate text-xs text-muted">Your order has shipped</p>
+            </div>
+            <span class="font-mono text-[11px] text-dim">09:41</span>
+          </div>
+          <p class="flex flex-wrap gap-x-2.5 gap-y-1 rounded-lg border border-dashed border-line-strong px-2.5 py-2 text-xs text-muted">
+            Sent to river.lamp42 from Shop · <span class="text-ice">Block sender</span> · <span class="text-ice">Disable alias</span>
+          </p>
+        </div>
+        <span class="font-mono text-xs text-ice">Step 2</span>
+        <h3 class="text-xl font-medium tracking-tight">Mail arrives in your normal inbox</h3>
+        <p class="text-[15px] text-muted">Each forwarded message carries a small banner. It shows which alias was used and lets you block the sender in one click.</p>
+      </li>
+      <li class="reveal flex min-w-0 flex-col gap-3.5">
+        <div class="grid min-h-37 content-start rounded-[14px] border border-line bg-surface p-4" aria-hidden="true">
+          <div class="env-box">
+            <span class="text-dim">From:</span> river.lamp42@{SITE.domain}<br />
+            <span class="text-dim">To:</span> orders@shop.example<br />
+            <span class="text-dim">Re:</span> Your order has shipped
+          </div>
+        </div>
+        <span class="font-mono text-xs text-ice">Step 3</span>
+        <h3 class="text-xl font-medium tracking-tight">Reply without giving yourself away</h3>
+        <p class="text-[15px] text-muted">Hit reply as usual. The shop sees the alias, never your real address. If an alias starts getting spam, turn it off.</p>
+      </li>
+    </ol>
+  </div>
+</section>

@@ -80,6 +80,34 @@ jobs:
       - run: npm test
       - run: npm run build
 
+  landing:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: landing
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: landing/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      # Publish to Cloudflare Pages on pushes to main, once the CLOUDFLARE_API_TOKEN and
+      # CLOUDFLARE_ACCOUNT_ID repository secrets exist (token needs Account > Cloudflare Pages > Edit).
+      - name: Check for Pages credentials
+        id: pages
+        run: echo "enabled=${{ secrets.CLOUDFLARE_API_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
+      - name: Deploy to Cloudflare Pages
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.pages.outputs.enabled == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npm run deploy
+
   images:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [backend, edge, web]

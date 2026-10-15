@@ -7,15 +7,18 @@ test:
 	cd backend && uv run pytest
 	cd edge && npm test
 	@if [ -d web ]; then cd web && npm test; fi
+	cd landing && npm test
 
 lint:
 	cd backend && uv run ruff check . && uv run ruff format --check .
 	@if [ -d web ]; then cd web && npm run lint; fi
+	cd landing && npm run lint
 
 typecheck:
 	cd backend && uv run mypy mailalias
 	cd edge && npx tsc --noEmit
 	@if [ -d web ]; then cd web && npx tsc --noEmit; fi
+	cd landing && npx astro check
 
 dev-up:
 	$(COMPOSE_DEV) up -d --wait

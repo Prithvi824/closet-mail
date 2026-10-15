@@ -1,0 +1,32 @@
+---
+/** Sticky top bar with section links, the GitHub link and the invite button. */
+import InviteLink from "./InviteLink.astro";
+import Logo from "./Logo.astro";
+import { SITE } from "@/lib/site";
+
+const links = [
+  { href: "#how", label: "How it works" },
+  { href: "#features", label: "Features" },
+  { href: "#api", label: "API" },
+  { href: "#privacy", label: "Privacy" },
+];
+---
+
+<header
+  class="sticky z-10 border-b border-line bg-canvas/70 backdrop-blur-md"
+  style="top: env(safe-area-inset-top, 0px)"
+>
+  <div class="gutter flex h-15 items-center gap-7">
+    <a href="#top" class="flex items-center gap-2.5 font-semibold tracking-tight" aria-label={`${SITE.name} home`}>
+      <Logo />
+      {SITE.name}
+    </a>
+    <nav class="hidden gap-5.5 text-sm text-muted md:flex" aria-label="Sections">
+      {links.map((link) => <a class="hover:text-fg" href={link.href}>{link.label}</a>)}
+    </nav>
+    <div class="ml-auto flex gap-2.5">
+      <a class="btn btn-ghost btn-sm hidden sm:inline-flex" href={SITE.appUrl}>Sign in</a>
+      <InviteLink size="sm" />
+    </div>
+  </div>
+</header>
