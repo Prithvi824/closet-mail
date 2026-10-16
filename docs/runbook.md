@@ -99,7 +99,7 @@ cd edge && npx wrangler deploy
 
 ## Landing page
 
-`landing/` is a static Astro site served by Cloudflare Pages (project `closet-mail-landing`) on the apex domain. Site-wide facts such as the invite address live in `landing/src/lib/site.ts`.
+`landing/` is a static Astro site served by Cloudflare Pages (project `closet-mail-landing`) on the apex domain. It is live at https://closetcompute.online: the Pages custom domain replaced the old parking A record on the apex, and `www` is not configured. Site-wide facts such as the invite address live in `landing/src/lib/site.ts`.
 
 **One-time setup:**
 
@@ -113,4 +113,8 @@ cd edge && npx wrangler deploy
 cd landing && npm run build && npm run deploy
 ```
 
-The invite buttons open a pre-filled email to the invite address. That address must accept mail: its subdomain needs Email Routing enabled, and the alias must exist (or the subdomain catch-all must be on).
+The invite buttons open a pre-filled email to the invite address (`invite@prithvi.closetcompute.online`). That address must accept mail: its subdomain needs Email Routing enabled, and the alias must exist (or the subdomain catch-all must be on).
+
+## Personal subdomains
+
+Each personal subdomain `<username>.closetcompute.online` must be added in Cloudflare → Email Routing → Settings → Subdomains before it receives mail. Cloudflare then adds the MX records (route1/2/3.mx.cloudflare.net) and an SPF TXT record for it. The zone catch-all rule does not cover a subdomain until it is added, and the app does not automate this step. Once it is added, the user's "subdomain catch-all" setting writes KV `s:<username>=C`, and the edge accepts any address on it.

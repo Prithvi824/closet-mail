@@ -36,6 +36,7 @@ Sender → Cloudflare Email Routing → edge Worker (KV check) → R2 + Queue
 | `landing/` | Public landing page for the apex domain (Astro, Tailwind, Motion, Magic UI), deployed to Cloudflare Pages |
 | `deploy/` | Dockerfiles, production and dev compose files, Caddyfile, Rspamd config, deploy scripts |
 | `docs/runbook.md` | Deploy, webhooks, backups and restore, monitoring |
+| `SECURITY.md` | How to report a vulnerability |
 
 ## Development
 
@@ -45,10 +46,13 @@ Prerequisites: uv, Node 22+, Docker.
 cp deploy/.env.example deploy/.env   # then fill in real values (chmod 600)
 make dev-up                          # Postgres :5433, Redis :6380, Rspamd :11333
 cd backend && uv sync && uv run pytest
+cd backend && uv run uvicorn mailalias.api.app:create_app --factory --reload   # API on :8000
 cd edge && npm ci && npm test
 cd web && npm ci && npm run dev      # proxies the API on :8000
 cd landing && npm ci && npm run dev  # landing page on :4321
 ```
+
+The encryption, hash and signing keys have no defaults. For local work put dev values in `backend/.env`; generate a Fernet key with `uv run python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'`. Don't run the processor or worker against the production queue from a dev machine.
 
 | Task | Command |
 |---|---|

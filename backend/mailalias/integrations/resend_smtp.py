@@ -52,6 +52,12 @@ class ResendSmtpSender:
                 _, response = await smtp.send_message(
                     message, sender=envelope_from, recipients=rcpt_to
                 )
+        except aiosmtplib.SMTPRecipientsRefused as exc:
+            # Every recipient was refused; this is not an SMTPResponseException, so map the codes.
+            codes = [refused.code for refused in exc.recipients]
+            if any(400 <= code < 500 for code in codes):
+                raise RetryableError(f"smtp recipients deferred {codes}") from exc
+            raise PermanentSendError(f"smtp recipients refused {codes}") from exc
         except aiosmtplib.SMTPResponseException as exc:
             if 400 <= exc.code < 500:
                 raise RetryableError(f"smtp temporary failure {exc.code}") from exc

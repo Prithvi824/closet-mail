@@ -48,6 +48,9 @@ export function PasskeysCard() {
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
+        {passkeys.isError ? (
+          <p className="text-sm text-destructive">{errorMessage(passkeys.error, "Could not load passkeys")}</p>
+        ) : null}
         <ul className="divide-y rounded-md border empty:hidden">
           {passkeys.data?.map((passkey) => (
             <li key={passkey.id} className="flex items-center gap-3 px-3 py-2">

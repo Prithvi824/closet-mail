@@ -19,3 +19,6 @@ export const STATE_LABELS: Record<AliasState, string> = {
   deleted: "Deleted",
   forgotten: "Forgotten",
 };
+
+/** States offered in the list filter; forgotten aliases are never listed. */
+export const STATE_FILTER_OPTIONS: AliasState[] = ["active", "inactive", "deleted"];

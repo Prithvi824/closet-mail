@@ -3,7 +3,7 @@
 # 1st party imports
 import uuid
 from collections.abc import Mapping
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 # 3rd party imports
@@ -17,6 +17,21 @@ HOUR_TTL_SECONDS = 2 * 3_600
 QuotaKind = Literal["forward", "reply"]
 # users.limits keys that override the Settings defaults.
 LIMIT_KEYS = {"forward": "forwards_per_hour", "reply": "replies_per_day"}
+# Cloudflare Queues accepts retry delays of at most 12 hours.
+MAX_RETRY_DELAY_SECONDS = 43_200
+
+
+def cap_retry_delay(now: datetime | None = None) -> int:
+    """Seconds to wait before retrying mail held by the global daily cap.
+
+    Args:
+        now: Current time (defaults to now, UTC).
+    Returns:
+        Seconds until just after the next UTC midnight, capped at the queue's maximum delay.
+    """
+    now = now or datetime.now(UTC)
+    midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    return min(int((midnight - now).total_seconds()) + 60, MAX_RETRY_DELAY_SECONDS)
 
 
 def global_key(now: datetime | None = None) -> str:

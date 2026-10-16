@@ -1,5 +1,6 @@
 # Tests, lint and type checks on every push and pull request; on pushes to main, also build and
-# publish the production images to GHCR (tagged with the commit SHA and "latest").
+# publish the production images to GHCR (tagged with the commit SHA and "latest") and deploy
+# landing/ to Cloudflare Pages.
 name: CI
 
 on:

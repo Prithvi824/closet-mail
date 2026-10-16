@@ -57,6 +57,9 @@ export function BlocklistPage() {
         <FormError message={add.error ? errorMessage(add.error) : null} />
       </form>
       {entries.isPending ? <Skeleton className="h-16 w-full" /> : null}
+      {entries.isError ? (
+        <p className="text-sm text-destructive">{errorMessage(entries.error, "Could not load the blocklist")}</p>
+      ) : null}
       {entries.data && entries.data.length === 0 ? (
         <p className="text-sm text-muted-foreground">Nothing blocked. You can also block a sender from the banner on forwarded mail.</p>
       ) : null}

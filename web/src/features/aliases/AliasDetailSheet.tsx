@@ -1,10 +1,11 @@
-import { useState, type ReactNode } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import { CheckList } from "@/components/CheckList";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { CopyButton } from "@/components/CopyButton";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -26,7 +27,7 @@ import {
   useUpdateAlias,
 } from "@/features/aliases/api";
 import { ContactsList } from "@/features/aliases/ContactsList";
-import { useLabels } from "@/features/labels/api";
+import { useCreateLabel, useLabels } from "@/features/labels/api";
 import { useRecipients } from "@/features/recipients/api";
 import type { Alias, AliasUpdate } from "@/lib/api";
 import { formatDateTime, formatRelative } from "@/lib/format";
@@ -82,9 +83,11 @@ function AliasDetails({ alias, onClose }: AliasDetailsProps) {
   const [description, setDescription] = useState(alias.description ?? "");
   const [recipientIds, setRecipientIds] = useState(alias.recipient_ids);
   const [labelIds, setLabelIds] = useState(alias.label_ids);
+  const [newLabel, setNewLabel] = useState("");
   const [confirm, setConfirm] = useState<"delete" | "forget" | null>(null);
   const recipients = useRecipients();
   const labels = useLabels();
+  const createLabel = useCreateLabel();
   const update = useUpdateAlias();
   const remove = useDeleteAlias();
   const restore = useRestoreAlias();
@@ -104,6 +107,18 @@ function AliasDetails({ alias, onClose }: AliasDetailsProps) {
       () => toast.success(message),
       (error: unknown) => toast.error(errorMessage(error, "Could not save")),
     );
+  }
+
+  /** Create a label and pre-select it; it is attached once the labels are saved. */
+  async function addLabel(event: FormEvent) {
+    event.preventDefault();
+    const label = await createLabel.mutateAsync({ name: newLabel.trim() }).catch((error: unknown) => {
+      toast.error(errorMessage(error, "Could not create the label"));
+      return null;
+    });
+    if (!label) return;
+    setLabelIds((ids) => [...ids, label.id]);
+    setNewLabel("");
   }
 
   async function runAction(action: "delete" | "forget" | "restore") {
@@ -201,9 +216,27 @@ function AliasDetails({ alias, onClose }: AliasDetailsProps) {
         </Section>
       ) : null}
 
-      {isEditable && labelOptions.length > 0 ? (
+      {isEditable ? (
         <Section title="Labels">
-          <CheckList idPrefix="alias-label" options={labelOptions} selected={labelIds} onChange={setLabelIds} />
+          <CheckList
+            idPrefix="alias-label"
+            options={labelOptions}
+            selected={labelIds}
+            onChange={setLabelIds}
+            emptyText="No labels yet. Create one below."
+          />
+          <form onSubmit={addLabel} className="flex gap-2">
+            <Input
+              aria-label="New label name"
+              placeholder="New label"
+              maxLength={40}
+              value={newLabel}
+              onChange={(event) => setNewLabel(event.target.value)}
+            />
+            <Button type="submit" size="sm" variant="outline" disabled={!newLabel.trim() || createLabel.isPending}>
+              Add
+            </Button>
+          </form>
           <Button
             size="sm"
             variant="outline"
@@ -218,7 +251,12 @@ function AliasDetails({ alias, onClose }: AliasDetailsProps) {
 
       <Separator />
       <Section title="Contacts">
-        <ContactsList aliasId={alias.id} aliasAddress={alias.address} readOnly={!isEditable} />
+        <ContactsList
+          aliasId={alias.id}
+          aliasAddress={alias.address}
+          readOnly={!isEditable}
+          replyEnabled={alias.reply_enabled}
+        />
       </Section>
 
       <Separator />
@@ -280,6 +318,9 @@ export function AliasDetailSheet({ aliasId, onClose }: AliasDetailSheetProps) {
           </SheetDescription>
         </SheetHeader>
         {alias.isPending ? <Skeleton className="mx-4 h-40" /> : null}
+        {alias.isError ? (
+          <p className="mx-4 text-sm text-destructive">{errorMessage(alias.error, "Could not load this alias")}</p>
+        ) : null}
         {alias.data ? <AliasDetails key={alias.data.id} alias={alias.data} onClose={onClose} /> : null}
       </SheetContent>
     </Sheet>

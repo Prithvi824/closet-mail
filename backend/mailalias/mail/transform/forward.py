@@ -14,7 +14,7 @@ from mailalias.mail.transform.headers import (
     strip_transport_headers,
 )
 from mailalias.mail.transform.mime import body_parts, content_free_copy
-from mailalias.mail.transform.pgp import encrypt_for_recipient
+from mailalias.mail.transform.pgp import encrypt_for_recipient, is_encrypted
 from mailalias.mail.transform.trackers import strip_trackers
 
 ENCRYPTED_NOTICE = (
@@ -108,12 +108,14 @@ def build_forward(original: EmailMessage, ctx: TransformContext) -> EmailMessage
         A new EmailMessage ready for the outbound mailer.
     """
     msg = strip_transport_headers(copy.deepcopy(original))
+    # Decide before the banner is added: a top banner hides inline armor from is_encrypted.
+    already_encrypted = is_encrypted(original)
     steps = (
         repackage_encrypted,
         ensure_text_body,
         strip_trackers,
         add_banner,
-        encrypt_for_recipient,
+        *(() if already_encrypted else (encrypt_for_recipient,)),
     )
     for step in steps:
         msg = step(msg, ctx)

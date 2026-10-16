@@ -12,7 +12,7 @@ import { AliasTable } from "@/features/aliases/AliasTable";
 import { useAliases, useBulkAliases } from "@/features/aliases/api";
 import { BulkActionsBar } from "@/features/aliases/BulkActionsBar";
 import { CreateAliasDialog } from "@/features/aliases/CreateAliasDialog";
-import { PER_PAGE, STATE_LABELS } from "@/features/aliases/types";
+import { PER_PAGE, STATE_FILTER_OPTIONS, STATE_LABELS, type AliasFilters } from "@/features/aliases/types";
 import { useAliasFilters } from "@/features/aliases/useAliasFilters";
 import { useLabels } from "@/features/labels/api";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
@@ -44,6 +44,12 @@ export function AliasesPage() {
     setSelected([]);
   }
 
+  /** Change filters and drop the selection, which may no longer be visible. */
+  function changeFilters(changes: Partial<AliasFilters>) {
+    setSelected([]);
+    update(changes);
+  }
+
   const applySearch = useEffectEvent((q: string) => {
     if (q !== filters.q) update({ q });
   });
@@ -69,21 +75,24 @@ export function AliasesPage() {
             placeholder="Search address or description"
             className="pl-8"
             value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              setSelected([]);
+            }}
           />
         </div>
         <Select
           value={filters.state || ANY}
-          onValueChange={(value) => update({ state: value === ANY ? "" : (value as AliasState) })}
+          onValueChange={(value) => changeFilters({ state: value === ANY ? "" : (value as AliasState) })}
         >
           <SelectTrigger aria-label="Filter by state" className="sm:w-40">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={ANY}>Active & inactive</SelectItem>
-            {Object.entries(STATE_LABELS).map(([value, label]) => (
+            {STATE_FILTER_OPTIONS.map((value) => (
               <SelectItem key={value} value={value}>
-                {label}
+                {STATE_LABELS[value]}
               </SelectItem>
             ))}
           </SelectContent>
@@ -91,7 +100,7 @@ export function AliasesPage() {
         {labels.data && labels.data.length > 0 ? (
           <Select
             value={filters.label || ANY}
-            onValueChange={(value) => update({ label: value === ANY ? "" : value })}
+            onValueChange={(value) => changeFilters({ label: value === ANY ? "" : value })}
           >
             <SelectTrigger aria-label="Filter by label" className="sm:w-40">
               <SelectValue />
@@ -129,10 +138,7 @@ export function AliasesPage() {
           page={filters.page}
           perPage={PER_PAGE}
           total={aliases.data.total}
-          onPageChange={(page) => {
-            setSelected([]);
-            update({ page });
-          }}
+          onPageChange={(page) => changeFilters({ page })}
         />
       ) : null}
       <CreateAliasDialog

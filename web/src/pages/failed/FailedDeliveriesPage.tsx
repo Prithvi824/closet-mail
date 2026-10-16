@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useFailedDeliveries } from "@/features/failed/api";
 import type { FailureKind } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
+import { errorMessage } from "@/lib/http";
 
 const KIND_LABELS: Record<FailureKind, string> = {
   hard: "Bounced",
@@ -35,6 +36,9 @@ export function FailedDeliveriesPage() {
         description="Bounces and delivery problems from the last 90 days. Three bounces in a row pause a recipient."
       />
       {failures.isPending ? <Skeleton className="h-24 w-full" /> : null}
+      {failures.isError ? (
+        <p className="text-sm text-destructive">{errorMessage(failures.error, "Could not load failed deliveries")}</p>
+      ) : null}
       {failures.data && failures.data.length === 0 ? (
         <EmptyState icon={MailCheckIcon} title="No delivery problems" />
       ) : null}

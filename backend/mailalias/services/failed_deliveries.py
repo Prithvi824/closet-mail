@@ -3,11 +3,11 @@
 # 1st party imports
 import logging
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 # 3rd party imports
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,6 +28,7 @@ from mailalias.services.system_mail import SystemMailService
 logger = logging.getLogger(__name__)
 
 HARD_BOUNCE_LIMIT = 3
+HARD_BOUNCE_WINDOW = timedelta(days=7)
 EVENT_KINDS = {
     "email.complained": FailureKind.COMPLAINT,
     "email.delivery_delayed": FailureKind.DELAYED,
@@ -186,18 +187,29 @@ class FailedDeliveryService:
         return written
 
     async def _count_hard_bounce(self, recipient: Recipient) -> None:
-        """Increment the streak; disable the recipient and tell the user on the limit.
+        """Recount recent hard bounces; disable the recipient and tell the user on the limit.
 
         Args:
-            recipient: Recipient that hard-bounced.
+            recipient: Recipient that hard-bounced (its new failure row is already flushed).
         Returns:
             None.
         """
+        # Bounces arrive by webhook after the send was accepted, so a successful send can't reset
+        # a streak. Counting hard bounces inside a window keeps old one-offs from adding up.
+        since = datetime.now(UTC) - HARD_BOUNCE_WINDOW
         count = await self.db.scalar(
+            select(func.count())
+            .select_from(FailedDelivery)
+            .where(
+                FailedDelivery.recipient_id == recipient.id,
+                FailedDelivery.kind == FailureKind.HARD,
+                FailedDelivery.created_at >= since,
+            )
+        )
+        await self.db.execute(
             update(Recipient)
             .where(Recipient.id == recipient.id)
-            .values(consecutive_hard_bounces=Recipient.consecutive_hard_bounces + 1)
-            .returning(Recipient.consecutive_hard_bounces)
+            .values(consecutive_hard_bounces=count or 0)
         )
         await self.db.refresh(recipient)
         if count is None or count < HARD_BOUNCE_LIMIT or recipient.disabled_at is not None:

@@ -9,7 +9,7 @@ from fastapi import APIRouter, Request, Response, status
 
 # local imports
 from mailalias.api.deps import AppSettings, CurrentSession, DbSession, Sessions, SystemMail
-from mailalias.api.errors import Unauthorized
+from mailalias.api.errors import QuotaExceeded, Unauthorized
 from mailalias.config import Settings
 from mailalias.db import get_redis
 from mailalias.models import User
@@ -107,10 +107,17 @@ async def submit_totp(
         None (204). Raises Unauthorized for a wrong code.
     """
     sid, data = session
-    user = await db.get(User, uuid.UUID(data.user_id))
+    # Lock the row so two requests can't spend the same backup code.
+    user = await db.get(User, uuid.UUID(data.user_id), with_for_update=True)
     if user is None or not user.totp_enabled:
         raise Unauthorized("Not signed in")
-    if not await UserService(db, get_redis()).verify_second_factor(user, body.code):
+    service = UserService(db, get_redis())
+    if await service.mfa_locked(user):
+        # Too many wrong codes: drop the pending session so the password must be entered again.
+        await sessions.delete(sid)
+        raise QuotaExceeded("Too many wrong codes. Try again later.", code="mfa_locked")
+    if not await service.verify_second_factor(user, body.code):
+        await service.record_mfa_failure(user)
         await audit.record(db, "login.mfa_failed", user_id=user.id)
         await db.commit()
         raise Unauthorized("Invalid code", code="invalid_code")

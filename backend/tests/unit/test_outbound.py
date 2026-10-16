@@ -121,6 +121,18 @@ async def test_success_returns_resend_id() -> None:
         (aiosmtplib.SMTPDataError(550, "domain not verified"), PermanentSendError),
         (aiosmtplib.SMTPServerDisconnected("gone"), RetryableError),
         (ConnectionRefusedError("down"), RetryableError),
+        (
+            aiosmtplib.SMTPRecipientsRefused(
+                [aiosmtplib.SMTPRecipientRefused(550, "no such user", "d@e.f")]
+            ),
+            PermanentSendError,
+        ),
+        (
+            aiosmtplib.SMTPRecipientsRefused(
+                [aiosmtplib.SMTPRecipientRefused(450, "mailbox busy", "d@e.f")]
+            ),
+            RetryableError,
+        ),
     ],
 )
 async def test_error_mapping(outcome: Exception, error: type[Exception]) -> None:

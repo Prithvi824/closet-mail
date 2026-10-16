@@ -55,6 +55,12 @@ export function InvitesPage() {
         <FormError message={create.error ? errorMessage(create.error) : null} />
       </form>
       {invites.isPending ? <Skeleton className="h-24 w-full" /> : null}
+      {invites.isError ? (
+        <p className="text-sm text-destructive">{errorMessage(invites.error, "Could not load invites")}</p>
+      ) : null}
+      {invites.data && invites.data.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No invites sent yet.</p>
+      ) : null}
       {invites.data && invites.data.length > 0 ? (
         <div className="overflow-hidden rounded-lg border">
           <Table>

@@ -27,6 +27,10 @@ MAX_PASSWORD_LENGTH = 128
 RESET_TTL_SECONDS = 3600
 _RESET_KEY = "pwreset:{digest}"
 _TOTP_USED_KEY = "totp:used:{user_id}:{code}"
+_MFA_FAIL_KEY = "mfa:fail:{user_id}"
+# Wrong second-factor codes allowed per user before MFA is locked for the window.
+MFA_MAX_FAILURES = 5
+MFA_LOCK_SECONDS = 900
 # Verified against when the username does not exist, so timing does not reveal accounts.
 _DUMMY_HASH = hash_password(secrets.token_urlsafe(16))
 
@@ -172,6 +176,33 @@ class UserService:
         user.backup_codes_hash = remaining
         await audit.record(self.db, "mfa.backup_code_used", user_id=user.id)
         return True
+
+    async def mfa_locked(self, user: User) -> bool:
+        """Whether the user has hit the wrong-code limit for the current window.
+
+        Args:
+            user: The user.
+        Returns:
+            True while second-factor attempts are locked.
+        """
+        if self.redis is None:
+            return False
+        failures = await self.redis.get(_MFA_FAIL_KEY.format(user_id=user.id))
+        return failures is not None and int(failures) >= MFA_MAX_FAILURES
+
+    async def record_mfa_failure(self, user: User) -> None:
+        """Count a wrong second-factor code; the counter expires after the lock window.
+
+        Args:
+            user: The user.
+        Returns:
+            None.
+        """
+        if self.redis is None:
+            return
+        key = _MFA_FAIL_KEY.format(user_id=user.id)
+        if await self.redis.incr(key) == 1:
+            await self.redis.expire(key, MFA_LOCK_SECONDS)
 
     async def begin_totp_setup(self, user: User) -> str:
         """Store a fresh (not yet enabled) TOTP secret.

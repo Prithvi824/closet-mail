@@ -17,7 +17,7 @@ from typer.testing import CliRunner
 from mailalias.cli import app as cli_app
 from mailalias.mail.outbound import FakeMailer
 from mailalias.models import Recipient, User, UserRole
-from mailalias.services.users import UserService
+from mailalias.services.users import MFA_MAX_FAILURES, UserService
 
 pytestmark = pytest.mark.usefixtures("relaxed_rate_limits")
 PASSWORD = "correct horse battery"
@@ -152,6 +152,30 @@ async def test_backup_code_works_once(client: httpx.AsyncClient, session: AsyncS
         assert await _login(client, "boss") is True
         response = await client.post("/api/v1/auth/totp", json={"code": codes[0]})
         assert response.status_code == expected
+
+
+async def test_wrong_codes_lock_mfa(client: httpx.AsyncClient, session: AsyncSession) -> None:
+    """After the wrong-code limit even a valid code is refused and the session is dropped.
+
+    Args:
+        client: HTTP client.
+        session: Test session.
+    Returns:
+        None.
+    """
+    await _make_admin(session)
+    await _login(client, "boss")
+    uri = (await client.post("/api/v1/me/totp/setup")).json()["otpauth_uri"]
+    secret = parse_qs(urlparse(uri).query)["secret"][0]
+    await client.post("/api/v1/me/totp/enable", json={"code": pyotp.TOTP(secret).now()})
+    await client.post("/api/v1/auth/logout")
+    assert await _login(client, "boss") is True
+    for _ in range(MFA_MAX_FAILURES):
+        wrong = await client.post("/api/v1/auth/totp", json={"code": "000000"})
+        assert wrong.status_code == 401
+    locked = await client.post("/api/v1/auth/totp", json={"code": pyotp.TOTP(secret).now()})
+    assert locked.status_code == 429 and locked.json()["error"]["code"] == "mfa_locked"
+    assert (await client.get("/api/v1/me")).status_code == 401
 
 
 async def test_login_does_not_reveal_usernames(

@@ -5,6 +5,9 @@ import { http } from "@/lib/http";
 
 export const QUARANTINE_KEY = ["quarantine"] as const;
 
+/** Give the worker time to deliver a released message before refetching the list. */
+const RELEASE_REFRESH_DELAY_MS = 5000;
+
 export function useQuarantine() {
   return useQuery({
     queryKey: QUARANTINE_KEY,
@@ -14,9 +17,13 @@ export function useQuarantine() {
 
 /** Queues delivery; the item disappears once the worker has delivered it. */
 export function useReleaseQuarantined() {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
       await http.post(`/quarantine/${id}/release`);
+    },
+    onSuccess: () => {
+      setTimeout(() => void queryClient.invalidateQueries({ queryKey: QUARANTINE_KEY }), RELEASE_REFRESH_DELAY_MS);
     },
   });
 }

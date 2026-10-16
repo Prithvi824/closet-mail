@@ -12,8 +12,12 @@ _TEST_ENV = {
     "APP_ENV": "test",
     "APP_BASE_URL": "http://testserver",
     "LOG_DIR": "./logs/test",
-    "DATABASE_URL": "postgresql+asyncpg://mailalias:mailalias@localhost:5433/mailalias_test",
-    "REDIS_URL": "redis://localhost:6380/15",
+    # TEST_DATABASE_URL / TEST_REDIS_URL point the suite elsewhere when the dev ports are taken.
+    "DATABASE_URL": os.environ.get(
+        "TEST_DATABASE_URL",
+        "postgresql+asyncpg://mailalias:mailalias@localhost:5433/mailalias_test",
+    ),
+    "REDIS_URL": os.environ.get("TEST_REDIS_URL", "redis://localhost:6380/15"),
     "DATA_ENCRYPTION_KEY": Fernet.generate_key().decode(),
     "HASH_KEY": secrets.token_hex(32),
     "SIGNING_KEY": secrets.token_urlsafe(32),

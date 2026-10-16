@@ -62,6 +62,9 @@ export function RecipientsPage() {
       />
       <AddRecipientForm />
       {recipients.isPending ? <Skeleton className="h-24 w-full" /> : null}
+      {recipients.isError ? (
+        <p className="text-sm text-destructive">{errorMessage(recipients.error, "Could not load recipients")}</p>
+      ) : null}
       {recipients.data ? (
         <div className="overflow-hidden rounded-lg border">
           <Table>

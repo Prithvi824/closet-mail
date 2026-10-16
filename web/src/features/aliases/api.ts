@@ -7,6 +7,7 @@ import { http } from "@/lib/http";
 export const aliasKeys = {
   all: ["aliases"] as const,
   list: (filters: AliasFilters) => ["aliases", filters] as const,
+  details: ["alias"] as const,
   detail: (id: string) => ["alias", id] as const,
   contacts: (aliasId: string) => ["contacts", aliasId] as const,
 };
@@ -79,11 +80,18 @@ export function useForgetAlias() {
   });
 }
 
+/** Bulk changes touch many aliases, so every cached alias detail is refreshed too. */
 export function useBulkAliases() {
-  return useAliasMutation(
-    async (input: { ids: string[]; action: BulkAction }) =>
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { ids: string[]; action: BulkAction }) =>
       (await http.post<{ changed: number }>("/aliases/bulk", input)).data,
-  );
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: aliasKeys.all }),
+        queryClient.invalidateQueries({ queryKey: aliasKeys.details }),
+      ]),
+  });
 }
 
 export function useContacts(aliasId: string | null) {

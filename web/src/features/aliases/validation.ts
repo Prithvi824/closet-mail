@@ -8,5 +8,6 @@ export function localPartError(value: string): string | null {
   if (!LOCAL_PART_RE.test(local) || local.includes("..")) {
     return "Use letters, digits, dots, hyphens or underscores (start with a letter or digit)";
   }
+  if (local.endsWith(".")) return "The address can't end with a dot";
   return null;
 }

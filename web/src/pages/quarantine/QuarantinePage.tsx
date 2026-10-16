@@ -47,6 +47,9 @@ export function QuarantinePage() {
         description="Suspected spam held for 7 days. Release what you want delivered; the rest is deleted automatically."
       />
       {items.isPending ? <Skeleton className="h-24 w-full" /> : null}
+      {items.isError ? (
+        <p className="text-sm text-destructive">{errorMessage(items.error, "Could not load quarantine")}</p>
+      ) : null}
       {items.data && items.data.length === 0 ? (
         <EmptyState icon={ShieldCheckIcon} title="Nothing in quarantine">
           Messages scored as likely spam show up here instead of your inbox.

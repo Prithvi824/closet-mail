@@ -1,10 +1,10 @@
 import { useSearchParams } from "react-router";
 
-import { DEFAULT_FILTERS, STATE_LABELS, type AliasFilters } from "@/features/aliases/types";
+import { DEFAULT_FILTERS, STATE_FILTER_OPTIONS, type AliasFilters } from "@/features/aliases/types";
 import type { AliasState } from "@/lib/api";
 
 function isAliasState(value: string | null): value is AliasState {
-  return value !== null && value in STATE_LABELS;
+  return value !== null && (STATE_FILTER_OPTIONS as string[]).includes(value);
 }
 
 /** Alias list filters stored in the URL (?q=&state=&label=&page=). */

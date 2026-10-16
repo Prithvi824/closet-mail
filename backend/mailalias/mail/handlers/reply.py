@@ -23,12 +23,11 @@ from mailalias.security.crypto import lookup_hash
 from mailalias.services import mail_log
 from mailalias.services.contacts import ContactService
 from mailalias.services.notices import notify_owner
-from mailalias.services.quota import QuotaService
+from mailalias.services.quota import QuotaService, cap_retry_delay
 from mailalias.services.system_mail import SystemMailService
 
 logger = logging.getLogger(__name__)
 
-GLOBAL_CAP_RETRY_SECONDS = 3600
 NOTICE_TTL_SECONDS = 3600
 DONE_TTL_SECONDS = 4 * 86_400
 REJECTION_TEXT = {
@@ -260,7 +259,7 @@ class ReplyHandler:
         if await self.redis.exists(done_key):
             return await self._finish(Outcome.DELIVERED, "redelivered", env, alias, contact)
         if not await self.quota.global_send_allowed():
-            raise RetryableError("global send cap reached", GLOBAL_CAP_RETRY_SECONDS)
+            raise RetryableError("global send cap reached", cap_retry_delay())
         if not await self.quota.check_and_consume(owner.id, "reply", limits=owner.limits):
             await self.quota.refund_global()
             return await self._reject("quota", env, alias, owner, contact)

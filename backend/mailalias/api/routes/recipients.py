@@ -2,6 +2,7 @@
 
 # 1st party imports
 import uuid
+from datetime import UTC, datetime
 
 # 3rd party imports
 from fastapi import APIRouter, Depends, status
@@ -9,7 +10,9 @@ from fastapi.responses import HTMLResponse
 
 # local imports
 from mailalias.api.deps import CurrentUser, DbSession, SystemMail, token_scopes
+from mailalias.api.errors import QuotaExceeded
 from mailalias.api.html import simple_page
+from mailalias.db import get_redis
 from mailalias.schemas.recipients import (
     PgpKeyUpdate,
     RecipientCreate,
@@ -18,8 +21,28 @@ from mailalias.schemas.recipients import (
 )
 from mailalias.services.recipients import RecipientService
 
+# Verification emails share the global outbound cap with forwards, so each user gets a small budget.
+VERIFY_MAILS_PER_DAY = 10
+
 router = APIRouter(prefix="/recipients", tags=["recipients"])
 VERIFY_PATH_PREFIX = "/api/v1/recipients/verify/"
+
+
+async def _spend_verification_mail(user: CurrentUser) -> None:
+    """Count one verification email against the user's daily budget.
+
+    Args:
+        user: Authenticated user.
+    Returns:
+        None. Raises QuotaExceeded once the daily budget is spent.
+    """
+    redis = get_redis()
+    key = f"q:verify:{user.id}:{datetime.now(UTC):%Y%m%d}"
+    sent = await redis.incr(key)
+    if sent == 1:
+        await redis.expire(key, 86400)
+    if sent > VERIFY_MAILS_PER_DAY:
+        raise QuotaExceeded("Too many verification emails today. Try again tomorrow.")
 
 
 @router.get("", dependencies=[Depends(token_scopes("recipients:read"))])
@@ -50,6 +73,7 @@ async def add_recipient(
     Returns:
         The new (unverified) recipient.
     """
+    await _spend_verification_mail(user)
     recipient = await RecipientService(db).add(user, str(body.email), mail)
     await db.commit()
     return RecipientResponse.build(recipient, user.default_recipient_id)
@@ -104,7 +128,9 @@ async def resend_verification(
         Acknowledgement.
     """
     service = RecipientService(db)
-    await service.send_verification(await service.get_owned(user, recipient_id), mail)
+    recipient = await service.get_owned(user, recipient_id)
+    await _spend_verification_mail(user)
+    await service.send_verification(recipient, mail)
     await db.commit()
     return {"status": "sent"}
 

@@ -1,5 +1,6 @@
 import { MailPlusIcon } from "lucide-react";
 import { useState, type FormEvent } from "react";
+import { toast } from "sonner";
 
 import { CopyButton } from "@/components/CopyButton";
 import { FormError } from "@/components/FormError";
@@ -19,6 +20,8 @@ interface ContactsListProps {
   aliasAddress: string;
   /** Deleted aliases can't start conversations. */
   readOnly: boolean;
+  /** The backend rejects replies and new conversations while replies are off. */
+  replyEnabled: boolean;
 }
 
 interface ContactRowProps {
@@ -55,7 +58,7 @@ function ContactRow({ contact, pending, onBlockedChange }: ContactRowProps) {
 }
 
 /** Correspondents of an alias, with block toggles and "write to someone new". */
-export function ContactsList({ aliasId, aliasAddress, readOnly }: ContactsListProps) {
+export function ContactsList({ aliasId, aliasAddress, readOnly, replyEnabled }: ContactsListProps) {
   const [email, setEmail] = useState("");
   const [started, setStarted] = useState<Contact | null>(null);
   const contacts = useContacts(aliasId);
@@ -70,6 +73,13 @@ export function ContactsList({ aliasId, aliasAddress, readOnly }: ContactsListPr
     setEmail("");
   }
 
+  function changeBlocked(contact: Contact, blocked: boolean) {
+    setBlocked.mutate(
+      { id: contact.id, blocked },
+      { onError: (error: unknown) => toast.error(errorMessage(error, "Could not update the contact")) },
+    );
+  }
+
   return (
     <div className="flex flex-col gap-3">
       {!readOnly ? (
@@ -82,11 +92,15 @@ export function ContactsList({ aliasId, aliasAddress, readOnly }: ContactsListPr
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               placeholder="someone@example.com"
+              disabled={!replyEnabled}
             />
-            <Button type="submit" variant="outline" disabled={!email.trim() || createContact.isPending}>
+            <Button type="submit" variant="outline" disabled={!replyEnabled || !email.trim() || createContact.isPending}>
               <MailPlusIcon /> Get address
             </Button>
           </div>
+          {!replyEnabled ? (
+            <p className="text-xs text-muted-foreground">Turn on "Allow replies" to write from this alias.</p>
+          ) : null}
           <FormError message={createContact.error ? errorMessage(createContact.error) : null} />
         </form>
       ) : null}
@@ -105,6 +119,9 @@ export function ContactsList({ aliasId, aliasAddress, readOnly }: ContactsListPr
         </Alert>
       ) : null}
       {contacts.isPending ? <Skeleton className="h-10 w-full" /> : null}
+      {contacts.isError ? (
+        <p className="text-sm text-destructive">{errorMessage(contacts.error, "Could not load contacts")}</p>
+      ) : null}
       {contacts.data && contacts.data.length === 0 ? (
         <p className="text-sm text-muted-foreground">No one has written to this alias yet.</p>
       ) : null}
@@ -114,7 +131,7 @@ export function ContactsList({ aliasId, aliasAddress, readOnly }: ContactsListPr
             key={contact.id}
             contact={contact}
             pending={setBlocked.isPending}
-            onBlockedChange={(blocked) => setBlocked.mutate({ id: contact.id, blocked })}
+            onBlockedChange={(blocked) => changeBlocked(contact, blocked)}
           />
         ))}
       </ul>

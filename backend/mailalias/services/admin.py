@@ -23,7 +23,7 @@ from mailalias.mail.processor import HEARTBEAT_KEY
 from mailalias.mail.types import RetryableError
 from mailalias.models import Alias, AliasState, FailedDelivery, FailureKind, User, UserRole
 from mailalias.security.sessions import SessionStore
-from mailalias.services import audit
+from mailalias.services import audit, kv_sync
 from mailalias.services.kv_sync import LAST_RECONCILE_KEY
 from mailalias.services.quota import global_key
 
@@ -144,6 +144,8 @@ class AdminService:
             user.disabled_at = datetime.now(UTC) if disabled else None
             if disabled:
                 await SessionStore(self.redis).delete_all_for_user(user.id)
+            # The edge's subdomain catch-all flag depends on the account being enabled.
+            kv_sync.mark_subdomain(self.db, user.id)
         await audit.record(
             self.db,
             "admin.user_update",

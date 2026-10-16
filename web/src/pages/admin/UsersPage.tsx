@@ -37,6 +37,9 @@ export function UsersPage() {
     <>
       <PageHeader title="Users" description="Everyone with an account. Disabling a user signs them out and stops their mail." />
       {users.isPending ? <Skeleton className="h-24 w-full" /> : null}
+      {users.isError ? (
+        <p className="text-sm text-destructive">{errorMessage(users.error, "Could not load users")}</p>
+      ) : null}
       {users.data ? (
         <div className="overflow-hidden rounded-lg border">
           <Table>

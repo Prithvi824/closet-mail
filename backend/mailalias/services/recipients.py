@@ -11,7 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # local imports
-from mailalias.api.errors import Conflict, NotFound, ValidationFailed
+from mailalias.api.errors import Conflict, NotFound, QuotaExceeded, ValidationFailed
 from mailalias.config import get_settings
 from mailalias.integrations import gpg
 from mailalias.mail.addresses import is_service_domain, normalize, split_address
@@ -21,6 +21,7 @@ from mailalias.services.system_mail import SystemMailService
 from mailalias.services.users import token_digest
 
 VERIFY_TTL = timedelta(hours=48)
+VERIFY_RESEND_COOLDOWN = timedelta(minutes=5)
 MAX_RECIPIENTS_PER_USER = 20
 
 
@@ -101,10 +102,14 @@ class RecipientService:
             recipient: Unverified recipient.
             mail: System mail service.
         Returns:
-            None. Raises Conflict if already verified.
+            None. Raises Conflict if already verified, QuotaExceeded if sent recently.
         """
         if recipient.verified_at is not None:
             raise Conflict("Recipient is already verified")
+        if recipient.verify_sent_at is not None and (
+            datetime.now(UTC) - recipient.verify_sent_at < VERIFY_RESEND_COOLDOWN
+        ):
+            raise QuotaExceeded("A verification email was sent recently. Try again shortly.")
         token = secrets.token_urlsafe(32)
         recipient.verify_token_hash = token_digest(token)
         recipient.verify_sent_at = datetime.now(UTC)

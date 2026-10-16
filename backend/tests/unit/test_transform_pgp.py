@@ -132,6 +132,21 @@ def test_already_encrypted_mail_is_not_encrypted_again(key: PgpTestKey) -> None:
     assert [p.get_filename() for p in out.iter_attachments()] == ["encrypted.asc"]
 
 
+def test_inline_armor_is_not_encrypted_again_under_a_top_banner(key: PgpTestKey) -> None:
+    """An inline-PGP body stays as is even though the top banner now precedes the armor."""
+    original = EmailMessage()
+    original["From"] = "alice@example.org"
+    original["To"] = "shop@closetcompute.online"
+    original["Subject"] = "secret"
+    armor = f"{PGP_ARMOR}\n\nhQEMA1234\n-----END PGP MESSAGE-----\n"
+    original.set_content(armor)
+    out = build_forward(original, _ctx(key))
+    body = out.get_body(("plain",))
+    assert body is not None
+    text = cast(EmailMessage, body).get_content()
+    assert TEXT_START in text and text.count(PGP_ARMOR) == 1 and "hQEMA1234" in text
+
+
 def test_no_key_means_no_encryption(key: PgpTestKey) -> None:
     """Recipients without a key get the normal forward."""
     ctx = dataclasses.replace(_ctx(key), pgp_public_key=None)

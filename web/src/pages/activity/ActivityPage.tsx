@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useActivity } from "@/features/activity/api";
 import { DailyChart } from "@/features/activity/DailyChart";
 import { RecentMailTable } from "@/features/activity/RecentMailTable";
+import { errorMessage } from "@/lib/http";
 
 const WINDOWS = [7, 30, 90];
 
@@ -54,6 +55,9 @@ export function ActivityPage() {
         }
       />
       {activity.isPending ? <Skeleton className="h-64 w-full" /> : null}
+      {activity.isError ? (
+        <p className="text-sm text-destructive">{errorMessage(activity.error, "Could not load activity")}</p>
+      ) : null}
       {activity.data ? (
         <div className="flex flex-col gap-6">
           <div className="grid grid-cols-2 gap-3">

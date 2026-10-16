@@ -42,6 +42,9 @@ export function TokensPage() {
         }
       />
       {tokens.isPending ? <Skeleton className="h-24 w-full" /> : null}
+      {tokens.isError ? (
+        <p className="text-sm text-destructive">{errorMessage(tokens.error, "Could not load tokens")}</p>
+      ) : null}
       {tokens.data && tokens.data.length === 0 ? (
         <EmptyState icon={KeyRoundIcon} title="No tokens yet" />
       ) : null}

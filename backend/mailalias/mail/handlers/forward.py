@@ -10,12 +10,12 @@ from email.utils import getaddresses
 
 # 3rd party imports
 from redis.asyncio import Redis
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 # local imports
-from mailalias.api.errors import DomainError
+from mailalias.api.errors import Conflict, DomainError
 from mailalias.config import Settings
 from mailalias.integrations.r2 import ObjectStore
 from mailalias.integrations.rspamd import SpamChecker, SpamCheckUnavailable
@@ -34,12 +34,11 @@ from mailalias.services.blocklist import BlocklistService
 from mailalias.services.contacts import ContactService
 from mailalias.services.notices import notify_owner
 from mailalias.services.quarantine import QuarantineService, subject_of
-from mailalias.services.quota import QuotaService
+from mailalias.services.quota import QuotaService, cap_retry_delay
 from mailalias.services.system_mail import SystemMailService
 
 logger = logging.getLogger(__name__)
 
-GLOBAL_CAP_RETRY_SECONDS = 3600
 DONE_TTL_SECONDS = 4 * 86_400  # longer than the R2 inbox lifecycle (3 days)
 QUOTA_NOTICE_TTL_SECONDS = 86_400
 
@@ -239,6 +238,9 @@ class ForwardHandler:
             await AliasService(self.db, self.settings, self.redis).create(
                 owner, local_part=local, subdomain=True
             )
+        except Conflict:
+            # Another message for the same new address created it first; load that one below.
+            pass
         except DomainError as exc:
             logger.info("catch-all alias not created", extra={"code": exc.code})
             return None
@@ -391,7 +393,7 @@ class ForwardHandler:
         pending = [r for r in recipients if str(r.id) not in done]
         cost = len(pending)
         if cost and not await self.quota.global_send_allowed(cost):
-            raise RetryableError("global send cap reached", GLOBAL_CAP_RETRY_SECONDS)
+            raise RetryableError("global send cap reached", cap_retry_delay())
         if cost and not await self.quota.check_and_consume(
             owner.id, "forward", cost, limits=owner.limits
         ):
@@ -404,11 +406,19 @@ class ForwardHandler:
         delivered = len(recipients) - cost
         for index, recipient in enumerate(pending):
             context = self._context(alias, contact, owner, recipient, display)
-            # PGP runs a gpg subprocess per message; keep it off the event loop.
-            if context.pgp_public_key:
-                message = await asyncio.to_thread(build_forward, msg, context)
-            else:
-                message = build_forward(msg, context)
+            try:
+                # PGP runs a gpg subprocess per message; keep it off the event loop.
+                if context.pgp_public_key:
+                    message = await asyncio.to_thread(build_forward, msg, context)
+                else:
+                    message = build_forward(msg, context)
+            except Exception:
+                # A broken key or unparseable part fails the same way on every retry, so skip this
+                # recipient (never fall back to plaintext) and keep going with the others.
+                logger.exception("forward build failed", extra={"recipient_id": str(recipient.id)})
+                await self.quota.refund_global(1)
+                await self.quota.refund_user(owner.id, "forward", 1)
+                continue
             if delivery.spam_unchecked:
                 message[NOTICE_HEADER] = "spam-check-unavailable"
             try:
@@ -430,11 +440,6 @@ class ForwardHandler:
             delivered += 1
             await self.redis.sadd(done_key, str(recipient.id))
             await self.redis.expire(done_key, DONE_TTL_SECONDS)
-            await self.db.execute(
-                update(Recipient)
-                .where(Recipient.id == recipient.id)
-                .values(consecutive_hard_bounces=0)
-            )
         if not delivered:
             return await self._log(
                 Outcome.DISCARDED, "send_failed", env, alias, contact, None, score
