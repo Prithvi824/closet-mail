@@ -4,6 +4,8 @@ A self-hosted email alias service in the style of addy.io, running on `closetcom
 Give every site its own address; mail is forwarded to your real inbox, and you can reply
 anonymously as the alias.
 
+[![closet-mail demo video](docs/media/closet-mail-demo.jpg)](docs/media/closet-mail-demo.mp4)
+
 ## Features
 
 - **Aliases:** random word or character aliases, custom aliases, personal subdomains with optional catch-all, labels, bulk actions.
