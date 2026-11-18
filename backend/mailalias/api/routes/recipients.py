@@ -56,7 +56,7 @@ async def list_recipients(user: CurrentUser, db: DbSession) -> list[RecipientRes
         Recipients, oldest first.
     """
     recipients = await RecipientService(db).list_for(user)
-    return [RecipientResponse.build(r, user.default_recipient_id) for r in recipients]
+    return [RecipientResponse.build(r) for r in recipients]
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -76,26 +76,31 @@ async def add_recipient(
     await _spend_verification_mail(user)
     recipient = await RecipientService(db).add(user, str(body.email), mail)
     await db.commit()
-    return RecipientResponse.build(recipient, user.default_recipient_id)
+    return RecipientResponse.build(recipient)
 
 
 @router.patch("/{recipient_id}")
 async def update_recipient(
     recipient_id: uuid.UUID, body: RecipientUpdate, user: CurrentUser, db: DbSession
 ) -> RecipientResponse:
-    """Enable or disable a recipient.
+    """Enable/disable a recipient or change whether it is a default inbox.
 
     Args:
         recipient_id: Recipient id.
-        body: New disabled state.
+        body: Fields to change.
         user: Authenticated user.
         db: Database session.
     Returns:
         The updated recipient.
     """
-    recipient = await RecipientService(db).set_disabled(user, recipient_id, body.disabled)
+    service = RecipientService(db)
+    recipient = await service.get_owned(user, recipient_id)
+    if body.forward_by_default is not None:
+        recipient = await service.set_default(user, recipient_id, body.forward_by_default)
+    if body.disabled is not None:
+        recipient = await service.set_disabled(user, recipient_id, body.disabled)
     await db.commit()
-    return RecipientResponse.build(recipient, user.default_recipient_id)
+    return RecipientResponse.build(recipient)
 
 
 @router.delete("/{recipient_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -153,7 +158,7 @@ async def set_pgp_key(
         user, recipient_id, body.public_key, body.protect_subject
     )
     await db.commit()
-    return RecipientResponse.build(recipient, user.default_recipient_id)
+    return RecipientResponse.build(recipient)
 
 
 @router.get("/verify/{token}", response_class=HTMLResponse)

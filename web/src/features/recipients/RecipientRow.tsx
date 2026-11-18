@@ -9,20 +9,22 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Switch } from "@/components/ui/switch";
 import { TableCell, TableRow } from "@/components/ui/table";
 import type { Recipient } from "@/lib/api";
 
-export type RecipientAction = "pgp" | "default" | "resend" | "disable" | "enable" | "delete";
+export type RecipientAction = "pgp" | "resend" | "disable" | "enable" | "delete";
 
 interface RecipientRowProps {
   recipient: Recipient;
   onAction: (action: RecipientAction, recipient: Recipient) => void;
+  onDefaultChange: (recipient: Recipient, value: boolean) => void;
+  defaultPending: boolean;
 }
 
 function StatusBadges({ recipient }: { recipient: Recipient }) {
   return (
     <div className="flex flex-wrap gap-1">
-      {recipient.is_default ? <Badge>Default</Badge> : null}
       {!recipient.verified ? <Badge variant="secondary">Unverified</Badge> : null}
       {recipient.disabled ? <Badge variant="destructive">Disabled</Badge> : null}
       {recipient.pgp_fingerprint ? (
@@ -34,10 +36,8 @@ function StatusBadges({ recipient }: { recipient: Recipient }) {
   );
 }
 
-/** One recipient with its status and an actions menu. */
-export function RecipientRow({ recipient, onAction }: RecipientRowProps) {
-  const canBeDefault = recipient.verified && !recipient.disabled && !recipient.is_default;
-
+/** One inbox with its default switch, status and an actions menu. */
+export function RecipientRow({ recipient, onAction, onDefaultChange, defaultPending }: RecipientRowProps) {
   return (
     <TableRow>
       <TableCell className="w-full max-w-0">
@@ -45,6 +45,14 @@ export function RecipientRow({ recipient, onAction }: RecipientRowProps) {
         {recipient.pgp_fingerprint ? (
           <p className="truncate font-mono text-xs text-muted-foreground">{recipient.pgp_fingerprint}</p>
         ) : null}
+      </TableCell>
+      <TableCell className="w-px">
+        <Switch
+          aria-label={`Default inbox: ${recipient.email}`}
+          checked={recipient.forward_by_default}
+          disabled={defaultPending}
+          onCheckedChange={(value) => onDefaultChange(recipient, value)}
+        />
       </TableCell>
       <TableCell>
         <StatusBadges recipient={recipient} />
@@ -60,9 +68,6 @@ export function RecipientRow({ recipient, onAction }: RecipientRowProps) {
             <DropdownMenuItem onSelect={() => onAction("pgp", recipient)}>
               {recipient.pgp_fingerprint ? "Change PGP key" : "Add PGP key"}
             </DropdownMenuItem>
-            {canBeDefault ? (
-              <DropdownMenuItem onSelect={() => onAction("default", recipient)}>Make default</DropdownMenuItem>
-            ) : null}
             {!recipient.verified ? (
               <DropdownMenuItem onSelect={() => onAction("resend", recipient)}>
                 Resend verification

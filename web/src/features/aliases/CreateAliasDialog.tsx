@@ -53,7 +53,7 @@ export function CreateAliasDialog({ open, onOpenChange, onCreated }: CreateAlias
     .map((recipient) => ({
       value: recipient.id,
       label: recipient.email,
-      hint: recipient.is_default ? "default" : undefined,
+      hint: recipient.forward_by_default ? "default" : undefined,
     }));
 
   function reset() {

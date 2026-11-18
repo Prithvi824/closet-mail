@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # local imports
 from mailalias.mail.outbound import FakeMailer
 from mailalias.services.users import UserService
+from tests.integration.harness import default_inbox
 from tests.pgp_keys import PgpTestKey, make_key
 
 pytestmark = pytest.mark.usefixtures("relaxed_rate_limits")
@@ -102,10 +103,60 @@ async def test_cannot_remove_last_verified_recipient(signed_in: httpx.AsyncClien
         None.
     """
     only = (await signed_in.get("/api/v1/recipients")).json()[0]
-    assert only["is_default"] is True
+    assert only["forward_by_default"] is True
     assert (await signed_in.delete(f"/api/v1/recipients/{only['id']}")).status_code == 422
     disable = await signed_in.patch(f"/api/v1/recipients/{only['id']}", json={"disabled": True})
     assert disable.status_code == 422
+
+
+async def _add_verified(client: httpx.AsyncClient, mailer: FakeMailer, email: str) -> str:
+    """Add an inbox through the API and confirm its verification link.
+
+    Args:
+        client: Authenticated client.
+        mailer: Fake mailer holding the verification mail.
+        email: Inbox address.
+    Returns:
+        The new recipient id.
+    """
+    created = await client.post("/api/v1/recipients", json={"email": email})
+    assert created.status_code == 201
+    await client.post(_verify_path(mailer), headers={"X-Requested-With": ""})
+    return str(created.json()["id"])
+
+
+async def test_default_flag_can_move_but_one_default_inbox_must_remain(
+    signed_in: httpx.AsyncClient, mailer: FakeMailer
+) -> None:
+    """Inboxes can be flagged default; unflagging, disabling or deleting the last one is refused.
+
+    Args:
+        signed_in: Authenticated client.
+        mailer: Fake mailer.
+    Returns:
+        None.
+    """
+    first = (await signed_in.get("/api/v1/recipients")).json()[0]["id"]
+    second = await _add_verified(signed_in, mailer, "erin.two@example.org")
+    flagged = await signed_in.patch(
+        f"/api/v1/recipients/{second}", json={"forward_by_default": True}
+    )
+    assert flagged.status_code == 200 and flagged.json()["forward_by_default"] is True
+    unflag_first = await signed_in.patch(
+        f"/api/v1/recipients/{first}", json={"forward_by_default": False}
+    )
+    assert unflag_first.status_code == 200
+    for response in (
+        await signed_in.patch(f"/api/v1/recipients/{second}", json={"forward_by_default": False}),
+        await signed_in.patch(f"/api/v1/recipients/{second}", json={"disabled": True}),
+        await signed_in.delete(f"/api/v1/recipients/{second}"),
+    ):
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "last_default_inbox"
+    listed = {
+        r["id"]: r["forward_by_default"] for r in (await signed_in.get("/api/v1/recipients")).json()
+    }
+    assert listed == {first: False, second: True}
 
 
 async def test_other_users_recipients_are_hidden(
@@ -121,7 +172,9 @@ async def test_other_users_recipients_are_hidden(
     """
     other = await UserService(session).create_user("frank", "frank@example.com", PASSWORD)
     await session.commit()
-    response = await signed_in.delete(f"/api/v1/recipients/{other.default_recipient_id}")
+    response = await signed_in.delete(
+        f"/api/v1/recipients/{(await default_inbox(session, other)).id}"
+    )
     assert response.status_code == 404
 
 

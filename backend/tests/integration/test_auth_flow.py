@@ -18,6 +18,7 @@ from mailalias.cli import app as cli_app
 from mailalias.mail.outbound import FakeMailer
 from mailalias.models import Recipient, User, UserRole
 from mailalias.services.users import MFA_MAX_FAILURES, UserService
+from tests.integration.harness import default_inbox
 
 pytestmark = pytest.mark.usefixtures("relaxed_rate_limits")
 PASSWORD = "correct horse battery"
@@ -104,8 +105,8 @@ async def test_invite_login_totp_logout_cycle(
 
     carol = await session.scalar(select(User).where(User.username == "carol"))
     assert carol is not None
-    recipient = await session.get(Recipient, carol.default_recipient_id)
-    assert recipient is not None and recipient.is_usable
+    recipient = await default_inbox(session, carol)
+    assert recipient.is_usable and recipient.forward_by_default
 
     assert await _login(client, "carol") is False
     me = await client.get("/api/v1/me")

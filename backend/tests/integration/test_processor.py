@@ -29,7 +29,13 @@ from mailalias.security.crypto import lookup_hash
 from mailalias.services.contacts import ContactService
 from mailalias.services.quota import global_key
 from tests.eml import envelope
-from tests.integration.harness import FlakyMailer, Harness, mail_logs, make_harness
+from tests.integration.harness import (
+    FlakyMailer,
+    Harness,
+    default_inbox,
+    mail_logs,
+    make_harness,
+)
 from tests.pgp_keys import make_key
 
 pytestmark = pytest.mark.usefixtures("dispatched")
@@ -221,7 +227,7 @@ async def test_heartbeat_written(session: AsyncSession) -> None:
 async def test_recipient_with_pgp_key_gets_encrypted_forward(session: AsyncSession) -> None:
     """A recipient's PGP key turns the forward into inline PGP (built off the event loop)."""
     h = await make_harness(session)
-    recipient = await session.get(Recipient, h.user.default_recipient_id)
+    recipient = await default_inbox(session, h.user)
     assert recipient is not None
     recipient.pgp_public_key = make_key("pia@example.com").public
     await session.commit()
@@ -274,7 +280,7 @@ async def test_forward_to_two_inboxes_logs_each_delivery_and_sender(
     """Each inbox gets its own delivery row and provider id; the log keeps time and sender."""
     h = await make_harness(session)
     second = await _second_inbox(session, h)
-    first = await session.get(Recipient, h.user.default_recipient_id)
+    first = await default_inbox(session, h.user)
     assert first is not None
     h.alias.recipients = [first, second]
     await session.commit()
@@ -334,3 +340,15 @@ async def test_redelivered_forward_is_not_counted_twice(session: AsyncSession) -
     assert (usage.received, usage.forwards) == (1, 1)
     await session.refresh(h.alias)
     assert h.alias.forwarded_count == 1
+
+
+async def test_catchall_alias_reaches_every_default_inbox(session: AsyncSession) -> None:
+    """An alias with no inbox ticked forwards to all usable default inboxes."""
+    h = await make_harness(session)
+    second = await _second_inbox(session, h)
+    second.forward_by_default = True
+    h.user.subdomain_catchall = True
+    await session.commit()
+    h.enqueue("fwd_alternative.eml", rcpt_to="new@pia.closetcompute.online")
+    await h.processor.run_once()
+    assert sorted(m.rcpt_to[0] for m in h.mailer.sent) == ["pia2@example.org", "pia@example.com"]

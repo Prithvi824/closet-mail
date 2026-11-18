@@ -6,13 +6,10 @@ import uuid
 
 # 3rd party imports
 from fastapi import APIRouter, Query, status
-from sqlalchemy import select
 
 # local imports
 from mailalias.api.deps import AppSettings, CurrentSession, CurrentUser, DbSession, Sessions
-from mailalias.api.errors import ValidationFailed
 from mailalias.db import get_redis
-from mailalias.models import Recipient
 from mailalias.schemas.activity import ActivityResponse
 from mailalias.schemas.auth import PasskeyOptions
 from mailalias.schemas.me import (
@@ -72,14 +69,6 @@ async def update_settings(body: SettingsUpdate, user: CurrentUser, db: DbSession
         The updated profile.
     """
     changes = body.model_dump(exclude_unset=True)
-    if "default_recipient_id" in changes:
-        recipient = await db.scalar(
-            select(Recipient).where(
-                Recipient.id == changes["default_recipient_id"], Recipient.user_id == user.id
-            )
-        )
-        if recipient is None or not recipient.is_usable:
-            raise ValidationFailed("Default recipient must be one of your verified recipients")
     for field, value in changes.items():
         if value is not None:
             setattr(user, field, value)

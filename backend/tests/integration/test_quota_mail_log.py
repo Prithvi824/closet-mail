@@ -34,6 +34,7 @@ from mailalias.services.quota import (
     user_key,
 )
 from mailalias.services.users import UserService
+from tests.integration.harness import default_inbox
 
 
 def _quota() -> QuotaService:
@@ -174,6 +175,7 @@ async def test_record_writes_one_delivery_row_per_inbox(
 ) -> None:
     """A forward delivered to two inboxes logs two delivery rows and counts as one received."""
     user, alias, contact = await _setup(session)
+    first = await default_inbox(session, user)
     second = Recipient(user_id=user.id, email="o2@example.com", email_hash=lookup_hash("o2@x"))
     session.add(second)
     await session.flush()
@@ -187,7 +189,7 @@ async def test_record_writes_one_delivery_row_per_inbox(
         size_bytes=10,
         provider_id="re_1",
         deliveries=[
-            mail_log.DeliveryRecord(user.default_recipient_id, "re_1"),
+            mail_log.DeliveryRecord(first.id, "re_1"),
             mail_log.DeliveryRecord(second.id, "re_2"),
         ],
     )
@@ -195,7 +197,7 @@ async def test_record_writes_one_delivery_row_per_inbox(
         await session.scalars(select(DeliveryLog).where(DeliveryLog.mail_log_id == entry.id))
     ).all()
     assert {(r.recipient_id, r.provider_id) for r in rows} == {
-        (user.default_recipient_id, "re_1"),
+        (first.id, "re_1"),
         (second.id, "re_2"),
     }
     assert all(r.status is DeliveryStatus.SENT and r.user_id == user.id for r in rows)

@@ -127,11 +127,13 @@ class UserService:
         except IntegrityError as exc:
             raise Conflict("Username or email already in use") from exc
         recipient = Recipient(
-            user_id=user.id, email=email, email_hash=lookup_hash(email), verified_at=_now()
+            user_id=user.id,
+            email=email,
+            email_hash=lookup_hash(email),
+            verified_at=_now(),
+            forward_by_default=True,
         )
         self.db.add(recipient)
-        await self.db.flush()
-        user.default_recipient_id = recipient.id
         await self.db.flush()
         return user
 

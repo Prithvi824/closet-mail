@@ -275,7 +275,7 @@ class ForwardHandler:
         return await self.db.scalar(query.execution_options(populate_existing=True))
 
     async def _recipients(self, alias: Alias, owner: User) -> list[Recipient]:
-        """Usable recipients of the alias, falling back to the owner's default.
+        """Usable recipients of the alias, falling back to all of the owner's default inboxes.
 
         Args:
             alias: Alias with recipients loaded.
@@ -284,9 +284,13 @@ class ForwardHandler:
             Recipients (never on a service domain).
         """
         recipients = [r for r in alias.recipients if r.is_usable]
-        if not recipients and owner.default_recipient_id:
-            default = await self.db.get(Recipient, owner.default_recipient_id)
-            recipients = [default] if default is not None and default.is_usable else []
+        if not recipients:
+            defaults = await self.db.scalars(
+                select(Recipient)
+                .where(Recipient.user_id == owner.id, Recipient.forward_by_default.is_(True))
+                .order_by(Recipient.created_at)
+            )
+            recipients = [r for r in defaults if r.is_usable]
         return [
             r
             for r in recipients

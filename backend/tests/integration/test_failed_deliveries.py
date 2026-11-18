@@ -25,7 +25,7 @@ from mailalias.models import DeliveryLog, DeliveryStatus, FailedDelivery, Failur
 from mailalias.security.crypto import lookup_hash
 from mailalias.services import mail_log
 from mailalias.services.users import UserService
-from tests.integration.harness import Harness, make_harness
+from tests.integration.harness import Harness, default_inbox, make_harness
 
 pytestmark = pytest.mark.usefixtures("dispatched", "relaxed_rate_limits")
 SECRET = "whsec_" + base64.b64encode(os.urandom(24)).decode()
@@ -158,7 +158,7 @@ async def test_event_types_are_recorded_against_the_recipient(
     assert response.status_code == 200 and response.json() == {"recorded": 1}
     (failure,) = await _failures(session, h)
     assert (failure.kind, failure.alias_id) == (kind, h.alias.id)
-    assert failure.recipient_id == h.user.default_recipient_id
+    assert failure.recipient_id == (await default_inbox(session, h.user)).id
 
 
 @pytest.mark.usefixtures("hook_settings")
@@ -198,8 +198,7 @@ async def test_third_hard_bounce_disables_recipient_and_notifies(
         )
     )
     await session.commit()
-    recipient = await session.get(Recipient, h.user.default_recipient_id)
-    assert recipient is not None
+    recipient = await default_inbox(session, h.user)
     for expected in (1, 2):
         await _post(client, _event("email.bounced", await _sent_forward(session, h), OWNER))
         await session.refresh(recipient)
@@ -231,8 +230,9 @@ async def test_bounced_reply_never_counts_against_recipients(
     await _post(client, _event("email.bounced", provider_id, OWNER))
     (failure,) = await _failures(session, h)
     assert failure.recipient_id is None and failure.alias_id == h.alias.id
-    recipient = await session.get(Recipient, h.user.default_recipient_id)
-    assert recipient is not None and recipient.consecutive_hard_bounces == 0
+    recipient = await default_inbox(session, h.user)
+    await session.refresh(recipient)
+    assert recipient.consecutive_hard_bounces == 0
 
 
 @pytest.mark.usefixtures("hook_settings")
@@ -298,7 +298,7 @@ async def test_bounce_on_the_second_inbox_is_matched_through_its_delivery(
         alias_id=h.alias.id,
         provider_id="p-first",
         deliveries=[
-            mail_log.DeliveryRecord(h.user.default_recipient_id, "p-first"),
+            mail_log.DeliveryRecord((await default_inbox(session, h.user)).id, "p-first"),
             mail_log.DeliveryRecord(second.id, "p-second"),
         ],
     )
@@ -346,7 +346,7 @@ async def test_delivered_event_updates_the_send_only(
         outcome=Outcome.DELIVERED,
         user_id=h.user.id,
         alias_id=h.alias.id,
-        deliveries=[mail_log.DeliveryRecord(h.user.default_recipient_id, "p-ok")],
+        deliveries=[mail_log.DeliveryRecord((await default_inbox(session, h.user)).id, "p-ok")],
     )
     await session.commit()
     response = await _post(client, _event("email.delivered", "p-ok", OWNER))

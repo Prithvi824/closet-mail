@@ -41,7 +41,8 @@ async def test_activity_totals_and_recent(client: httpx.AsyncClient, session: As
     assert len(body["daily"]) == 7
     assert body["daily"][-1]["forwards"] == 2 and body["daily"][-1]["replies"] == 1
     assert all(day["forwards"] == 0 for day in body["daily"][:-1])
-    latest = body["recent"][0]
+    # All rows share the test transaction's now(), so pick the quarantined one explicitly.
+    latest = next(row for row in body["recent"] if row["outcome"] == "quarantined")
     assert (latest["outcome"], latest["reason"], latest["spam_score"]) == (
         "quarantined",
         "spam",

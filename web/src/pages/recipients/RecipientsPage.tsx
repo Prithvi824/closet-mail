@@ -10,11 +10,11 @@ import {
   useDeleteRecipient,
   useRecipients,
   useResendVerification,
+  useSetRecipientDefault,
   useSetRecipientDisabled,
 } from "@/features/recipients/api";
 import { PgpKeyDialog } from "@/features/recipients/PgpKeyDialog";
 import { RecipientRow, type RecipientAction } from "@/features/recipients/RecipientRow";
-import { useUpdateSettings } from "@/features/settings/api";
 import type { Recipient } from "@/lib/api";
 import { errorMessage } from "@/lib/http";
 
@@ -25,7 +25,7 @@ export function RecipientsPage() {
   const setDisabled = useSetRecipientDisabled();
   const resend = useResendVerification();
   const remove = useDeleteRecipient();
-  const settings = useUpdateSettings();
+  const setDefault = useSetRecipientDefault();
 
   async function run(promise: Promise<unknown>, success: string) {
     await promise.then(
@@ -39,13 +39,16 @@ export function RecipientsPage() {
     const handlers: Record<RecipientAction, () => void> = {
       pgp: () => setPgpFor(recipient),
       delete: () => setDeleting(recipient),
-      default: () =>
-        void run(settings.mutateAsync({ default_recipient_id: id }), `${recipient.email} is now the default`),
       resend: () => void run(resend.mutateAsync(id), "Verification link sent"),
       disable: () => void run(setDisabled.mutateAsync({ id, disabled: true }), "Forwarding paused"),
       enable: () => void run(setDisabled.mutateAsync({ id, disabled: false }), "Forwarding enabled"),
     };
     handlers[action]();
+  }
+
+  function onDefaultChange(recipient: Recipient, value: boolean) {
+    const message = value ? `${recipient.email} is now a default inbox` : `${recipient.email} is no longer a default inbox`;
+    void run(setDefault.mutateAsync({ id: recipient.id, forward_by_default: value }), message);
   }
 
   async function confirmDelete() {
@@ -58,7 +61,7 @@ export function RecipientsPage() {
     <>
       <PageHeader
         title="Recipients"
-        description="Your real inboxes. Aliases forward here, and only these addresses can reply through an alias."
+        description="Real inboxes. Aliases forward here, and only these addresses can reply through an alias. Aliases with no inbox ticked go to every default inbox."
       />
       <AddRecipientForm />
       {recipients.isPending ? <Skeleton className="h-24 w-full" /> : null}
@@ -71,6 +74,7 @@ export function RecipientsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Address</TableHead>
+                <TableHead className="w-px">Default</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="w-px">
                   <span className="sr-only">Actions</span>
@@ -79,7 +83,13 @@ export function RecipientsPage() {
             </TableHeader>
             <TableBody>
               {recipients.data.map((recipient) => (
-                <RecipientRow key={recipient.id} recipient={recipient} onAction={onAction} />
+                <RecipientRow
+                  key={recipient.id}
+                  recipient={recipient}
+                  onAction={onAction}
+                  onDefaultChange={onDefaultChange}
+                  defaultPending={setDefault.isPending}
+                />
               ))}
             </TableBody>
           </Table>
@@ -90,7 +100,7 @@ export function RecipientsPage() {
         open={deleting !== null}
         onOpenChange={(open) => !open && setDeleting(null)}
         title="Delete this recipient?"
-        description={`Aliases forwarding to ${deleting?.email ?? ""} fall back to your default recipient.`}
+        description={`Aliases forwarding only to ${deleting?.email ?? ""} fall back to the default inboxes.`}
         confirmLabel="Delete"
         destructive
         pending={remove.isPending}

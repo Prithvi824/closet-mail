@@ -7,7 +7,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { useRecipients } from "@/features/recipients/api";
 import { useUpdateSettings } from "@/features/settings/api";
 import type { Me, SettingsUpdate } from "@/lib/api";
 import { errorMessage } from "@/lib/http";
@@ -37,9 +36,7 @@ interface PreferencesCardProps {
 
 /** Forwarding preferences; each control saves immediately. */
 export function PreferencesCard({ user }: PreferencesCardProps) {
-  const recipients = useRecipients();
   const update = useUpdateSettings();
-  const usable = (recipients.data ?? []).filter((r) => r.verified && !r.disabled);
   const subdomain = `${user.username}.closetcompute.online`;
 
   function save(changes: SettingsUpdate) {
@@ -53,26 +50,9 @@ export function PreferencesCard({ user }: PreferencesCardProps) {
     <Card>
       <CardHeader>
         <CardTitle>Forwarding</CardTitle>
-        <CardDescription>How forwarded mail looks and where it goes.</CardDescription>
+        <CardDescription>How forwarded mail looks.</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-5">
-        <SettingRow id="default-recipient" label="Default recipient" hint="Used by aliases without their own recipients.">
-          <Select
-            value={user.default_recipient_id ?? undefined}
-            onValueChange={(value) => save({ default_recipient_id: value })}
-          >
-            <SelectTrigger id="default-recipient" className="w-full sm:w-64">
-              <SelectValue placeholder="Choose a recipient" />
-            </SelectTrigger>
-            <SelectContent>
-              {usable.map((recipient) => (
-                <SelectItem key={recipient.id} value={recipient.id}>
-                  {recipient.email}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </SettingRow>
         <SettingRow id="banner-position" label="Banner" hint="The note on forwarded mail with block and disable links.">
           <Select
             value={user.banner_position}

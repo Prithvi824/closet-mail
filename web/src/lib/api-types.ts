@@ -635,11 +635,11 @@ export interface paths {
         head?: never;
         /**
          * Update Recipient
-         * @description Enable or disable a recipient.
+         * @description Enable/disable a recipient or change whether it is a default inbox.
          *
          *     Args:
          *         recipient_id: Recipient id.
-         *         body: New disabled state.
+         *         body: Fields to change.
          *         user: Authenticated user.
          *         db: Database session.
          *     Returns:
@@ -1973,8 +1973,6 @@ export interface components {
             role: components["schemas"]["UserRole"];
             /** Totp Enabled */
             totp_enabled: boolean;
-            /** Default Recipient Id */
-            default_recipient_id: string | null;
             banner_position: components["schemas"]["BannerPosition"];
             alias_format: components["schemas"]["AliasFormat"];
             /** Strip Trackers */
@@ -2173,8 +2171,8 @@ export interface components {
             verified: boolean;
             /** Disabled */
             disabled: boolean;
-            /** Is Default */
-            is_default: boolean;
+            /** Forward By Default */
+            forward_by_default: boolean;
             /** Pgp Fingerprint */
             pgp_fingerprint: string | null;
             /** Pgp Protect Subject */
@@ -2187,11 +2185,13 @@ export interface components {
         };
         /**
          * RecipientUpdate
-         * @description Enable or disable a recipient.
+         * @description Enable/disable a recipient or change its default flag; omitted fields are unchanged.
          */
         RecipientUpdate: {
             /** Disabled */
-            disabled: boolean;
+            disabled?: boolean | null;
+            /** Forward By Default */
+            forward_by_default?: boolean | null;
         };
         /**
          * ReleaseResponse
@@ -2215,8 +2215,6 @@ export interface components {
             strip_trackers?: boolean | null;
             /** Subdomain Catchall */
             subdomain_catchall?: boolean | null;
-            /** Default Recipient Id */
-            default_recipient_id?: string | null;
         };
         /**
          * TokenCreate

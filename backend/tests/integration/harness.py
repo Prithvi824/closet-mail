@@ -22,7 +22,7 @@ from mailalias.integrations.rspamd import SpamCheckUnavailable, SpamVerdict
 from mailalias.mail.outbound import FakeMailer
 from mailalias.mail.processor import MailProcessor
 from mailalias.mail.types import InboundEnvelope, RetryableError
-from mailalias.models import Alias, MailLog, User
+from mailalias.models import Alias, MailLog, Recipient, User
 from mailalias.services.aliases import AliasService
 from mailalias.services.system_mail import SystemMailService
 from mailalias.services.users import UserService
@@ -253,3 +253,18 @@ async def mail_logs(session: AsyncSession, harness: Harness) -> list[MailLog]:
     """
     query = select(MailLog).where(MailLog.user_id == harness.user.id).order_by(MailLog.created_at)
     return list(await session.scalars(query))
+
+
+async def default_inbox(session: AsyncSession, user: User) -> Recipient:
+    """The inbox UserService.create_user made for a user (its first recipient).
+
+    Args:
+        session: Test session.
+        user: The user.
+    Returns:
+        That recipient.
+    """
+    query = select(Recipient).where(Recipient.user_id == user.id).order_by(Recipient.created_at)
+    recipient = (await session.scalars(query)).first()
+    assert recipient is not None
+    return recipient

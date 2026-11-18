@@ -22,7 +22,6 @@ class MeResponse(BaseModel):
     email: str
     role: UserRole
     totp_enabled: bool
-    default_recipient_id: uuid.UUID | None
     banner_position: BannerPosition
     alias_format: AliasFormat
     strip_trackers: bool
@@ -37,7 +36,6 @@ class SettingsUpdate(BaseModel):
     alias_format: AliasFormat | None = None
     strip_trackers: bool | None = None
     subdomain_catchall: bool | None = None
-    default_recipient_id: uuid.UUID | None = None
 
 
 class TotpSetupResponse(BaseModel):
