@@ -251,8 +251,6 @@ def test_cli_create_admin(migrated_db: str) -> None:
                 user = await db.scalar(select(User).where(User.username == username))
                 role = user.role if user else None
                 if user:
-                    user.default_recipient_id = None
-                    await db.flush()
                     await db.execute(delete(Recipient).where(Recipient.user_id == user.id))
                     await db.execute(delete(User).where(User.id == user.id))
                     await db.commit()

@@ -1,0 +1,19 @@
+---
+/** Button that opens a pre-filled "get in touch" email in the visitor's mail app. */
+import { contactMailto } from "@/lib/contact";
+
+interface Props {
+  variant?: "primary" | "ghost";
+  size?: "md" | "sm";
+  label?: string;
+}
+
+const { variant = "primary", size = "md", label = "Get in touch" } = Astro.props;
+---
+
+<a
+  class:list={["btn", variant === "primary" ? "btn-primary" : "btn-ghost", size === "sm" && "btn-sm"]}
+  href={contactMailto()}
+>
+  {label}
+</a>

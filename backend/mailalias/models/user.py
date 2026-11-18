@@ -1,13 +1,12 @@
 """Users: each row is one subdomain (label = username); the operator's row also signs in."""
 
 # 1st party imports
-import uuid
 from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
 # 3rd party imports
-from sqlalchemy import ForeignKey, String
+from sqlalchemy import String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -53,9 +52,6 @@ class User(UUIDPrimaryKey, Timestamps, Base):
     totp_secret: Mapped[str | None] = mapped_column(EncryptedString())
     totp_enabled: Mapped[bool] = mapped_column(default=False)
     backup_codes_hash: Mapped[list[str]] = mapped_column(JSONB, default=list)
-    default_recipient_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("recipients.id", ondelete="SET NULL", use_alter=True)
-    )
     banner_position: Mapped[BannerPosition] = mapped_column(
         pg_enum(BannerPosition, "banner_position"), default=BannerPosition.TOP
     )

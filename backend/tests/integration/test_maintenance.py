@@ -6,7 +6,6 @@ import os
 import stat
 import subprocess
 import tempfile
-import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -26,7 +25,6 @@ from mailalias.models import (
     DeliveryLog,
     FailedDelivery,
     FailureKind,
-    Invite,
     MailLog,
     QuarantineItem,
     Recipient,
@@ -48,7 +46,7 @@ NOW = datetime.now(UTC)
 
 
 async def test_retention_rules(session: AsyncSession) -> None:
-    """Old logs/failures, expired or released quarantine, expired invites and stale tokens go."""
+    """Old logs/failures, expired or released quarantine and stale verify tokens go."""
     h = await make_harness(session)
     store = FakeStore({"quarantine/old.bin": b"x", "quarantine/new.bin": b"y"})
     common = {"user_id": h.user.id, "alias_id": h.alias.id, "sender": "a@b.c", "spam_score": 9.0}
@@ -71,19 +69,6 @@ async def test_retention_rules(session: AsyncSession) -> None:
                 user_id=h.user.id, kind=FailureKind.SOFT, created_at=NOW - timedelta(days=91)
             ),
             FailedDelivery(user_id=h.user.id, kind=FailureKind.SOFT),
-            Invite(
-                email="x@example.org",
-                email_hash=lookup_hash("x@example.org"),
-                token_hash=uuid.uuid4().hex,
-                expires_at=NOW - timedelta(days=1),
-            ),
-            Invite(
-                email="y@example.org",
-                email_hash=lookup_hash("y@example.org"),
-                token_hash=uuid.uuid4().hex,
-                expires_at=NOW - timedelta(days=1),
-                used_at=NOW,
-            ),
             Recipient(
                 user_id=h.user.id,
                 email="v@example.org",
@@ -97,7 +82,7 @@ async def test_retention_rules(session: AsyncSession) -> None:
     result = await run_retention(session, store)
     await session.commit()
     assert (result.quarantine, result.mail_log, result.failed_deliveries) == (1, 1, 1)
-    assert (result.invites, result.verify_tokens) == (1, 1)
+    assert result.verify_tokens == 1
     assert set(store.objects) == {"quarantine/new.bin"}
     assert (
         len((await session.scalars(select(MailLog).where(MailLog.user_id == h.user.id))).all()) == 1

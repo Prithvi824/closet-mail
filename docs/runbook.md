@@ -8,15 +8,16 @@ Do this once, after the app is reachable at `https://app.closetcompute.online`.
 
 1. In the Resend dashboard, go to **Webhooks → Add endpoint**:
    - URL: `https://app.closetcompute.online/hooks/email-events`
-   - Events: `email.bounced`, `email.complained`, `email.delivery_delayed`, `email.suppressed`
+   - Events: `email.delivered`, `email.bounced`, `email.complained`, `email.delivery_delayed`, `email.suppressed`
+   - `email.delivered` turns a copy's status from "sent" to "delivered" on the Activity page. Add it to an existing endpoint too.
 2. Copy the endpoint's signing secret (it starts with `whsec_`) into `deploy/.env` as `RESEND_WEBHOOK_SECRET`. Redeploy, or restart the `api` service.
 3. Check: Resend's "Send test event" should get `200 {"recorded": 0}`; test events don't match any sent message, so nothing is recorded.
 
 Behaviour:
 - **Without the secret,** the endpoint answers 503. Resend retries for a while, so set the secret soon after adding the webhook.
 - **Signatures** are verified with Svix. Events are de-duplicated by `svix-id`, so retries are safe.
-- **Matching.** Events are matched to our messages through `mail_log.provider_id` (the Resend email id). A bounce on a reply is recorded against the alias and never counts against the owner's recipients.
-- **Auto-disable.** Three hard bounces in a row disable a recipient. The user is told through their other usable recipients, or the admins are told if there are none. Re-enabling the recipient from the dashboard resets the count.
+- **Matching.** Each copy sent to an inbox has its own Resend id in `delivery_log`, so an event updates exactly that copy and inbox. Older mail falls back to `mail_log.provider_id`, matched only within that subdomain. An unknown id is recorded without an inbox and never disables anything. A bounce on a reply is recorded against the alias and never counts against the inboxes.
+- **Auto-disable.** Three hard bounces in a row disable an inbox, and the operator is emailed. Re-enabling the inbox from the dashboard resets the count.
 - `/hooks/*` must be on the Cloudflare Access bypass list, together with `/a/*` and `/api/v1/*`.
 
 ## Backups and restore
@@ -37,11 +38,13 @@ Verified on 2026-10-12 against the dev database. The restored database had the s
 
 ## Monitoring
 
-`monitor.check` runs every 5 minutes and emails every enabled admin. Each alert is sent at most once per 6 hours. It alerts when:
+`monitor.check` runs every 5 minutes and emails the operator. Each alert is sent at most once per 6 hours. It alerts when:
 - the processor heartbeat is missing or older than 5 minutes;
 - the dead-letter queue is not empty;
 - today's sends reach 80% of `OUTBOUND_DAILY_CAP`;
-- 24-hour hard bounces exceed 5% of delivered messages.
+- 24-hour hard bounces exceed 5% of delivered messages;
+- a live subdomain's last status check found its Cloudflare routing missing, or no verified default inbox;
+- a subdomain has used its whole daily send share.
 
 **Queue retention is one day.** Both `mail-inbound` and `mail-inbound-dlq` have `message_retention_period = 86400` (the account's current plan limit). If the processor is down for more than 24 hours, queued jobs expire. The raw messages stay in R2 `in/` for 3 days, but nothing points the processor at them. Treat a "processor not running" alert as urgent.
 
@@ -82,11 +85,13 @@ What runs (`docker-compose.yml`, project `mailalias`):
 - **Logs:** `~/mail-alias/logs/{api,processor,worker}/` (JSON lines, rotated daily, 14 kept) plus `docker compose logs`.
 
 After the first deploy:
-1. `cd ~/mail-alias && docker compose exec api mailalias create-admin --username <you> --email <you@...>` (prompts for the password).
+1. `cd ~/mail-alias && docker compose exec api mailalias create-admin --username <you> --email <you@...>` (prompts for the password). This is the operator account; it is also the operator's own subdomain.
 2. Register the Resend webhook (section above), then run `deploy.sh` again to ship the secret.
 3. Run `verify-infra.sh`, then sign in at `https://app.closetcompute.online` (Cloudflare Access, then app login).
 
-Rollback: `deploy/scripts/deploy.sh <previous sha>`. Migrations are additive; run `docker compose run --rm migrate alembic downgrade <rev>` on the host only if a migration itself is the problem.
+Rollback: `deploy/scripts/deploy.sh <previous sha>`. Migrations up to 0005 are additive; run `docker compose run --rm migrate alembic downgrade <rev>` on the host only if a migration itself is the problem.
+- **0006** drops `users.default_recipient_id` and the `invites` table. Deploy it only after 0004 has been running for at least a day, so no container still reads the old column.
+- **Downgrading below 0005** refuses while any subdomain has no email or password (subdomains created in the app have neither).
 
 ## Edge Worker
 
@@ -113,8 +118,29 @@ cd edge && npx wrangler deploy
 cd landing && npm run build && npm run deploy
 ```
 
-The invite buttons open a pre-filled email to the invite address (`invite@prithvi.closetcompute.online`). That address must accept mail: its subdomain needs Email Routing enabled, and the alias must exist (or the subdomain catch-all must be on).
+The "Get in touch" buttons open a pre-filled email to the contact address (`invite@prithvi.closetcompute.online`). That address must accept mail: its subdomain needs Email Routing enabled, and the alias must exist (or the subdomain catch-all must be on).
 
-## Personal subdomains
+## Adding a subdomain
 
-Each personal subdomain `<username>.closetcompute.online` must be added in Cloudflare → Email Routing → Settings → Subdomains before it receives mail. Cloudflare then adds the MX records (route1/2/3.mx.cloudflare.net) and an SPF TXT record for it. The zone catch-all rule does not cover a subdomain until it is added, and the app does not automate this step. Once it is added, the user's "subdomain catch-all" setting writes KV `s:<username>=C`, and the edge accepts any address on it.
+Each person served gets a subdomain `<label>.closetcompute.online`. The label can't be changed later.
+
+1. **Create it in the app:** Subdomains → New subdomain (label, display name, first inbox, notes), or on the server:
+   `docker compose exec api mailalias create-subdomain --label <label> --inbox <address> [--display-name "<name>"]`.
+   The first inbox is emailed a verification link and becomes a default inbox. Catch-all starts on.
+2. **Add it in Cloudflare by hand:** Email Routing → Settings → Subdomains → add `<label>.closetcompute.online`. Cloudflare adds the MX records (route1/2/3.mx.cloudflare.net) and an SPF TXT record. The zone catch-all rule does not cover a subdomain until it is added, and the app never changes DNS or Email Routing.
+3. **Press "Check now"** on the subdomain. It reads the MX and SPF records through the Cloudflare API, the edge flag `s:<label>` in KV, and whether a verified default inbox exists. The same check runs every 15 minutes (`subdomains.check_status`). The API token needs **Zone → DNS → Read** for the zone in `CF_ZONE_ID`; without it the status stays "Not checked".
+4. **The person clicks the verification link.** Status turns "Ready" once DNS is in place and an inbox is verified.
+
+Statuses: **Ready**, **DNS missing** (step 2 not done), **No inbox** (no verified default inbox), **Suspended**, **Retired**, **Not checked** (Cloudflare could not be read).
+
+**Send share.** Each subdomain may send `SUBDOMAIN_SENDS_PER_DAY` messages a day (default 40; forwards and replies, one per inbox) out of the global `OUTBOUND_DAILY_CAP`. Change it per subdomain in its detail sheet ("Sends per day"). Over its share, the subdomain's mail waits in the queue until midnight UTC, and the operator is emailed once.
+
+**Suspend and retire.** Suspending stops forwarding and removes the edge catch-all flag until resumed. Retiring forgets every alias (the addresses stay reserved, and the edge rejects them), disables the inboxes and keeps all history. Your own subdomain can't be suspended or retired.
+
+## Operator account
+
+Only the operator (the admin account) signs in. There is no emailed password reset. To set a new password on the server (this signs out every session):
+
+```sh
+docker compose exec api mailalias reset-password --username <operator>
+```

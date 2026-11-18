@@ -99,7 +99,7 @@ class UserService:
 
         Args:
             username: Desired username (becomes the personal subdomain label).
-            email: Account email (already proven by invite or by the admin).
+            email: Account email (becomes its first, verified, default inbox).
             password: Plaintext password.
             role: Account role.
         Returns:

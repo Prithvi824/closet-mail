@@ -1,19 +1,23 @@
 # closet-mail
 
 A self-hosted email alias service in the style of addy.io, running on `closetcompute.online`.
-Give every site its own address; mail is forwarded to your real inbox, and you can reply
-anonymously as the alias.
+It is run by an operator for the people they serve: each person gets a subdomain
+(`acme.closetcompute.online`), every site gets its own address, mail is forwarded to their
+real inboxes, and they can reply anonymously as the alias.
 
 [![closet-mail demo video](docs/media/closet-mail-demo.jpg)](docs/media/closet-mail-demo.mp4)
 
 ## Features
 
-- **Aliases:** random word or character aliases, custom aliases, personal subdomains with optional catch-all, labels, bulk actions.
-- **Forwarding:** a banner with one-click "block sender" and "disable alias" links, tracking-pixel removal, per-recipient PGP encryption.
+- **Subdomains:** the operator creates one per person, with its own inboxes, aliases, catch-all, limits and daily send share. Suspend or retire it at any time.
+- **Aliases:** random word or character aliases, custom aliases, subdomain aliases with optional catch-all, labels, bulk actions.
+- **Forwarding:** to every ticked inbox, or to all default inboxes. A banner with one-click "block sender" and "disable alias" links, tracking-pixel removal, per-inbox PGP encryption.
 - **Anonymous replies:** reply from your own inbox. The correspondent sees only the alias, and your address is removed from headers and body.
 - **Protection:** Rspamd spam scoring with an encrypted quarantine, blocklists by address or domain, per-sender blocking.
-- **Bounces:** Resend webhooks and DSNs are recorded. A recipient is disabled after repeated hard bounces.
-- **Accounts:** invite-only sign-up, TOTP and passkeys (WebAuthn), scoped API tokens, and an admin console with health and dead-letter retry.
+- **Bounces:** every copy has its own Resend id, so webhooks and DSNs land on the exact inbox. An inbox is disabled after repeated hard bounces.
+- **Metrics:** mail received, delivered, held and dropped per subdomain and per day; top sender domains, senders, aliases and inboxes; recent mail with the sender and every inbox it went to.
+- **Status:** each subdomain's Cloudflare MX/SPF records, edge flag and inboxes are checked every 15 minutes.
+- **Operator console:** only the operator signs in (TOTP and passkeys). Scoped API tokens per subdomain, health and dead-letter retry.
 - **Operations:** data retention, health alerts by email, and nightly encrypted database backups to R2.
 
 ## How it works

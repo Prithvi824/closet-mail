@@ -46,7 +46,6 @@ async def test_user_recipient_alias_contact_round_trip(session: AsyncSession) ->
     )
     session.add(recipient)
     await session.flush()
-    user.default_recipient_id = recipient.id
     alias = Alias(
         user_id=user.id,
         local_part="sunny.river42",
@@ -74,7 +73,6 @@ async def test_user_recipient_alias_contact_round_trip(session: AsyncSession) ->
     )
     assert loaded_user is not None
     assert loaded_user.email == "Alice@Example.com"
-    assert loaded_user.default_recipient_id == recipient.id
 
     loaded_alias = await session.scalar(select(Alias).where(Alias.address == alias.address))
     assert loaded_alias is not None

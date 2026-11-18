@@ -1,7 +1,7 @@
 ---
 /** Opening section: the pitch on the left, one message's route through the service on the right. */
 import { AliasTyper } from "./AliasTyper";
-import InviteLink from "./InviteLink.astro";
+import ContactLink from "./ContactLink.astro";
 import { BorderBeam } from "./ui/BorderBeam";
 import { SITE } from "@/lib/site";
 
@@ -40,11 +40,11 @@ const icons: Record<(typeof hops)[number]["icon"], string> = {
         alias, and your real address stays in the closet.
       </p>
       <div class="flex flex-wrap gap-3">
-        <InviteLink />
+        <ContactLink />
         <a class="btn btn-ghost" href="#how">See how it works</a>
       </div>
       <p class="flex flex-wrap gap-x-4.5 gap-y-1 text-[13px] text-dim">
-        <span>Invite only</span><span aria-hidden="true">·</span><span>AGPL-3.0</span><span aria-hidden="true">·</span><span>Passkeys and TOTP</span>
+        <span>Run by an operator</span><span aria-hidden="true">·</span><span>AGPL-3.0</span><span aria-hidden="true">·</span><span>Passkeys and TOTP</span>
       </p>
     </div>
 

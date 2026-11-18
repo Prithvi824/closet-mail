@@ -9,7 +9,6 @@ from mailalias.models.blocklist import BlockKind, BlocklistEntry
 from mailalias.models.contact import Contact
 from mailalias.models.delivery_log import DeliveryLog, DeliveryStatus
 from mailalias.models.failed_delivery import FailedDelivery, FailureKind
-from mailalias.models.invite import Invite
 from mailalias.models.label import Label, alias_labels
 from mailalias.models.mail_log import MailLog
 from mailalias.models.quarantine import QuarantineItem
@@ -35,7 +34,6 @@ __all__ = [
     "DeliveryStatus",
     "FailedDelivery",
     "FailureKind",
-    "Invite",
     "Label",
     "MailLog",
     "QuarantineItem",
