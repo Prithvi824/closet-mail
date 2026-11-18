@@ -15,5 +15,5 @@ export const totpSchema = z.object({
 
 /** Only allow same-site relative redirects after login. */
 export function safeNext(next: string | null): string {
-  return next && next.startsWith("/") && !next.startsWith("//") ? next : "/aliases";
+  return next && next.startsWith("/") && !next.startsWith("//") ? next : "/overview";
 }

@@ -21,6 +21,7 @@ const routes = [
   { path: "/login", element: <LoginPage /> },
   { path: "/totp", element: <TotpPage /> },
   { path: "/aliases", element: <p>aliases page</p> },
+  { path: "/overview", element: <p>overview page</p> },
 ];
 
 async function signIn(username = "pia", password = "correct horse") {
@@ -73,8 +74,8 @@ describe("login flow", () => {
     post.mockResolvedValueOnce({ data: { mfa_required: false, mfa_methods: [] } });
     const { router } = renderRoutes(routes, "/login?next=%2F%2Fevil.example");
     await signIn();
-    await screen.findByText("aliases page");
-    expect(router.state.location.pathname).toBe("/aliases");
+    await screen.findByText("overview page");
+    expect(router.state.location.pathname).toBe("/overview");
   });
 });
 

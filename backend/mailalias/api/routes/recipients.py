@@ -1,4 +1,4 @@
-"""Recipient management and the email verification link."""
+"""Recipient (inbox) management inside one subdomain."""
 
 # 1st party imports
 import uuid
@@ -6,12 +6,10 @@ from datetime import UTC, datetime
 
 # 3rd party imports
 from fastapi import APIRouter, Depends, status
-from fastapi.responses import HTMLResponse
 
 # local imports
-from mailalias.api.deps import CurrentUser, DbSession, SystemMail, token_scopes
+from mailalias.api.deps import CurrentSubdomain, DbSession, SystemMail, token_scopes
 from mailalias.api.errors import QuotaExceeded
-from mailalias.api.html import simple_page
 from mailalias.db import get_redis
 from mailalias.schemas.recipients import (
     PgpKeyUpdate,
@@ -25,10 +23,9 @@ from mailalias.services.recipients import RecipientService
 VERIFY_MAILS_PER_DAY = 10
 
 router = APIRouter(prefix="/recipients", tags=["recipients"])
-VERIFY_PATH_PREFIX = "/api/v1/recipients/verify/"
 
 
-async def _spend_verification_mail(user: CurrentUser) -> None:
+async def _spend_verification_mail(user: CurrentSubdomain) -> None:
     """Count one verification email against the user's daily budget.
 
     Args:
@@ -46,7 +43,7 @@ async def _spend_verification_mail(user: CurrentUser) -> None:
 
 
 @router.get("", dependencies=[Depends(token_scopes("recipients:read"))])
-async def list_recipients(user: CurrentUser, db: DbSession) -> list[RecipientResponse]:
+async def list_recipients(user: CurrentSubdomain, db: DbSession) -> list[RecipientResponse]:
     """List the user's recipients.
 
     Args:
@@ -61,7 +58,7 @@ async def list_recipients(user: CurrentUser, db: DbSession) -> list[RecipientRes
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def add_recipient(
-    body: RecipientCreate, user: CurrentUser, db: DbSession, mail: SystemMail
+    body: RecipientCreate, user: CurrentSubdomain, db: DbSession, mail: SystemMail
 ) -> RecipientResponse:
     """Add a recipient and send its verification email.
 
@@ -81,7 +78,7 @@ async def add_recipient(
 
 @router.patch("/{recipient_id}")
 async def update_recipient(
-    recipient_id: uuid.UUID, body: RecipientUpdate, user: CurrentUser, db: DbSession
+    recipient_id: uuid.UUID, body: RecipientUpdate, user: CurrentSubdomain, db: DbSession
 ) -> RecipientResponse:
     """Enable/disable a recipient or change whether it is a default inbox.
 
@@ -104,7 +101,7 @@ async def update_recipient(
 
 
 @router.delete("/{recipient_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_recipient(recipient_id: uuid.UUID, user: CurrentUser, db: DbSession) -> None:
+async def delete_recipient(recipient_id: uuid.UUID, user: CurrentSubdomain, db: DbSession) -> None:
     """Delete a recipient.
 
     Args:
@@ -120,7 +117,7 @@ async def delete_recipient(recipient_id: uuid.UUID, user: CurrentUser, db: DbSes
 
 @router.post("/{recipient_id}/resend-verification", status_code=status.HTTP_202_ACCEPTED)
 async def resend_verification(
-    recipient_id: uuid.UUID, user: CurrentUser, db: DbSession, mail: SystemMail
+    recipient_id: uuid.UUID, user: CurrentSubdomain, db: DbSession, mail: SystemMail
 ) -> dict[str, str]:
     """Send a new verification email.
 
@@ -142,7 +139,7 @@ async def resend_verification(
 
 @router.put("/{recipient_id}/pgp")
 async def set_pgp_key(
-    recipient_id: uuid.UUID, body: PgpKeyUpdate, user: CurrentUser, db: DbSession
+    recipient_id: uuid.UUID, body: PgpKeyUpdate, user: CurrentSubdomain, db: DbSession
 ) -> RecipientResponse:
     """Set or clear the recipient's PGP public key.
 
@@ -159,43 +156,3 @@ async def set_pgp_key(
     )
     await db.commit()
     return RecipientResponse.build(recipient)
-
-
-@router.get("/verify/{token}", response_class=HTMLResponse)
-async def verify_page(token: str, db: DbSession) -> HTMLResponse:
-    """Show a confirmation page. GET never changes state (mail scanners prefetch links).
-
-    Args:
-        token: Verification token.
-        db: Database session.
-    Returns:
-        HTML page with a confirm button, or an error page.
-    """
-    if await RecipientService(db).find_by_verify_token(token) is None:
-        return simple_page(
-            "Link expired", "This verification link is invalid or has expired.", status_code=404
-        )
-    return simple_page(
-        "Confirm forwarding address",
-        "Confirm that mail from your aliases may be forwarded to this address.",
-        button="Confirm address",
-    )
-
-
-@router.post("/verify/{token}", response_class=HTMLResponse)
-async def verify_confirm(token: str, db: DbSession) -> HTMLResponse:
-    """Verify the recipient (token is the credential; exempt from the CSRF header).
-
-    Args:
-        token: Verification token.
-        db: Database session.
-    Returns:
-        HTML result page.
-    """
-    recipient = await RecipientService(db).verify(token)
-    await db.commit()
-    if recipient is None:
-        return simple_page(
-            "Link expired", "This verification link is invalid or has expired.", status_code=404
-        )
-    return simple_page("Address confirmed", "Mail can now be forwarded to this address.")

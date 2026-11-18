@@ -8,7 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # local imports
 from mailalias.mail.types import MailKind, Outcome
 from mailalias.services import mail_log
-from tests.integration.harness import make_harness
+from tests.integration.harness import make_harness, sub
+
+BASE = sub("pia", "")  # this file's subdomain scope
 
 pytestmark = pytest.mark.usefixtures("dispatched", "relaxed_rate_limits")
 
@@ -37,7 +39,7 @@ async def test_activity_totals_and_recent(client: httpx.AsyncClient, session: As
     await session.commit()
     login = await client.post("/api/v1/auth/login", json={"username": "pia", "password": "x" * 12})
     assert login.status_code == 200
-    body = (await client.get("/api/v1/me/activity", params={"days": 7})).json()
+    body = (await client.get(f"{BASE}/activity", params={"days": 7})).json()
     assert len(body["daily"]) == 7
     assert body["daily"][-1]["forwards"] == 2 and body["daily"][-1]["replies"] == 1
     assert all(day["forwards"] == 0 for day in body["daily"][:-1])
@@ -60,4 +62,4 @@ async def test_activity_totals_and_recent(client: httpx.AsyncClient, session: As
         "spam_score",
         "size_bytes",
     }
-    assert (await client.get("/api/v1/me/activity", params={"days": 400})).status_code == 422
+    assert (await client.get(f"{BASE}/activity", params={"days": 400})).status_code == 422

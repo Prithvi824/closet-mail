@@ -1,16 +1,15 @@
-"""The signed-in user's profile, preferences and two-factor settings."""
+"""The signed-in operator's profile and two-factor settings."""
 
 # 1st party imports
 import json
 import uuid
 
 # 3rd party imports
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, status
 
 # local imports
 from mailalias.api.deps import AppSettings, CurrentSession, CurrentUser, DbSession, Sessions
 from mailalias.db import get_redis
-from mailalias.schemas.activity import ActivityResponse
 from mailalias.schemas.auth import PasskeyOptions
 from mailalias.schemas.me import (
     BackupCodesResponse,
@@ -18,11 +17,9 @@ from mailalias.schemas.me import (
     PasskeyRegister,
     PasskeyResponse,
     PasswordConfirm,
-    SettingsUpdate,
     TotpEnableRequest,
     TotpSetupResponse,
 )
-from mailalias.services import activity, kv_sync
 from mailalias.services.passkeys import PasskeyService
 from mailalias.services.users import UserService
 
@@ -38,43 +35,6 @@ async def get_me(user: CurrentUser) -> MeResponse:
     Returns:
         Profile and preferences.
     """
-    return MeResponse.model_validate(user)
-
-
-@router.get("/activity")
-async def get_activity(
-    user: CurrentUser, db: DbSession, days: int = Query(default=30, ge=1, le=90)
-) -> ActivityResponse:
-    """Daily totals for the last `days` days and the last 100 handled messages.
-
-    Args:
-        user, db: Request dependencies.
-        days: Window for the daily totals (1-90).
-    Returns:
-        The activity summary (no correspondent addresses or subjects).
-    """
-    daily = await activity.daily_totals(db, user, days)
-    return ActivityResponse.build(daily, await activity.recent_mail(db, user))
-
-
-@router.patch("/settings")
-async def update_settings(body: SettingsUpdate, user: CurrentUser, db: DbSession) -> MeResponse:
-    """Update preferences; only fields present in the body change.
-
-    Args:
-        body: Partial settings.
-        user: Authenticated user.
-        db: Database session.
-    Returns:
-        The updated profile.
-    """
-    changes = body.model_dump(exclude_unset=True)
-    for field, value in changes.items():
-        if value is not None:
-            setattr(user, field, value)
-    if "subdomain_catchall" in changes:
-        kv_sync.mark_subdomain(db, user.id)
-    await db.commit()
     return MeResponse.model_validate(user)
 
 

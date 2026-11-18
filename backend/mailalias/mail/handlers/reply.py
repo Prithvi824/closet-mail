@@ -23,7 +23,7 @@ from mailalias.security.crypto import lookup_hash
 from mailalias.services import mail_log
 from mailalias.services.contacts import ContactService
 from mailalias.services.mail_log import DeliveryRecord
-from mailalias.services.notices import notify_owner
+from mailalias.services.notices import operator_addresses, send_notice, subdomain_inboxes
 from mailalias.services.quota import QuotaService, cap_retry_delay
 from mailalias.services.system_mail import SystemMailService
 
@@ -31,6 +31,8 @@ logger = logging.getLogger(__name__)
 
 NOTICE_TTL_SECONDS = 3600
 DONE_TTL_SECONDS = 4 * 86_400
+# Rejections the person can act on themselves; spoofing and DMARC go to the operator only.
+PERSON_NOTICE_REASONS = frozenset({"reply_disabled", "alias_deleted", "quota"})
 REJECTION_TEXT = {
     "alias_deleted": "the alias has been deleted",
     "reply_disabled": "replies are turned off for this alias",
@@ -113,7 +115,7 @@ class ReplyHandler:
     async def _reject(
         self, reason: str, env: InboundEnvelope, alias: Alias, owner: User, contact: Contact
     ) -> HandlerResult:
-        """Drop the reply and tell the owner (at most once an hour per alias and reason).
+        """Drop the reply and tell the operator, plus the person when they can fix it (hourly).
 
         Args:
             reason: Reason code (key of REJECTION_TEXT).
@@ -122,10 +124,13 @@ class ReplyHandler:
         Returns:
             REJECTED_REPLY (DISCARDED for quota).
         """
-        await notify_owner(
+        to = await operator_addresses(self.db)
+        if reason in PERSON_NOTICE_REASONS:
+            to += await subdomain_inboxes(self.db, owner)
+        await send_notice(
             self.redis,
             self.system_mail,
-            owner,
+            to,
             throttle_key=f"reply:{alias.id}:{reason}",
             ttl_seconds=NOTICE_TTL_SECONDS,
             subject=f"Reply from {alias.address} was not sent",
@@ -134,6 +139,18 @@ class ReplyHandler:
         )
         outcome = Outcome.DISCARDED if reason == "quota" else Outcome.REJECTED_REPLY
         return await self._finish(outcome, reason, env, alias, contact)
+
+    async def _refund(self, owner: User) -> None:
+        """Give back every quota the reply consumed when it was not sent.
+
+        Args:
+            owner: Alias owner (the subdomain).
+        Returns:
+            None.
+        """
+        await self.quota.refund_global()
+        await self.quota.refund_share(owner.id)
+        await self.quota.refund_user(owner.id, "reply")
 
     async def _owner_addresses(self, owner: User) -> tuple[set[str], list[str]]:
         """Hashes of usable recipients (authorised senders) and every owner address.
@@ -147,7 +164,9 @@ class ReplyHandler:
             await self.db.scalars(select(Recipient).where(Recipient.user_id == owner.id))
         )
         allowed = {r.email_hash for r in recipients if r.is_usable}
-        addresses = {normalize(r.email) for r in recipients} | {normalize(owner.email)}
+        addresses = {normalize(r.email) for r in recipients}
+        if owner.email is not None:
+            addresses.add(normalize(owner.email))
         return allowed, sorted(addresses)
 
     def _is_authorised(self, env: InboundEnvelope, msg: EmailMessage, allowed: set[str]) -> bool:
@@ -230,10 +249,11 @@ class ReplyHandler:
         if not mapped["To"] and not mapped["Cc"]:
             mapped["To"] = ((contact.sender_name or "", real_address),)
         if removed:
-            await notify_owner(
+            # The person sent the reply, so they need to know who did not get it.
+            await send_notice(
                 self.redis,
                 self.system_mail,
-                owner,
+                await operator_addresses(self.db) + await subdomain_inboxes(self.db, owner),
                 throttle_key=f"reply:{alias.id}:filtered",
                 ttl_seconds=NOTICE_TTL_SECONDS,
                 subject=f"Some recipients were removed from a reply from {alias.address}",
@@ -270,8 +290,12 @@ class ReplyHandler:
             )
         if not await self.quota.global_send_allowed():
             raise RetryableError("global send cap reached", cap_retry_delay())
+        if not await self.quota.check_share(owner.id, 1, owner.limits):
+            await self.quota.refund_global()
+            raise RetryableError("subdomain send share reached", cap_retry_delay())
         if not await self.quota.check_and_consume(owner.id, "reply", limits=owner.limits):
             await self.quota.refund_global()
+            await self.quota.refund_share(owner.id)
             return await self._reject("quota", env, alias, owner, contact)
 
         base = self.settings.app_base_url.rstrip("/")
@@ -291,13 +315,11 @@ class ReplyHandler:
                 reply, alias.address, [self.contacts.real_address(contact)]
             )
         except RetryableError:
-            await self.quota.refund_global()
-            await self.quota.refund_user(owner.id, "reply")
+            await self._refund(owner)
             raise
         except PermanentSendError:
             logger.warning("reply rejected", extra={"contact_id": str(contact.id)})
-            await self.quota.refund_global()
-            await self.quota.refund_user(owner.id, "reply")
+            await self._refund(owner)
             return await self._finish(Outcome.DISCARDED, "send_failed", env, alias, contact)
         await self.redis.set(done_key, "1", ex=DONE_TTL_SECONDS)
         return await self._finish(Outcome.DELIVERED, None, env, alias, contact, provider_id)

@@ -6,7 +6,7 @@ export function NotFoundPage() {
   return (
     <FullPageMessage
       title="Page not found"
-      body={<Link to="/aliases" className="underline underline-offset-4">Go to your aliases</Link>}
+      body={<Link to="/overview" className="underline underline-offset-4">Go to the overview</Link>}
     />
   );
 }

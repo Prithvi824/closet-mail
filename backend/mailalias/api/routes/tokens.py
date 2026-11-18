@@ -7,7 +7,7 @@ import uuid
 from fastapi import APIRouter, Response, status
 
 # local imports
-from mailalias.api.deps import CurrentUser, DbSession
+from mailalias.api.deps import CurrentSubdomain, DbSession
 from mailalias.schemas.tokens import TokenCreate, TokenCreated, TokenResponse
 from mailalias.services.api_tokens import TokenService
 
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/tokens", tags=["tokens"])
 
 
 @router.get("")
-async def list_tokens(user: CurrentUser, db: DbSession) -> list[TokenResponse]:
+async def list_tokens(user: CurrentSubdomain, db: DbSession) -> list[TokenResponse]:
     """List the user's tokens.
 
     Args:
@@ -27,7 +27,7 @@ async def list_tokens(user: CurrentUser, db: DbSession) -> list[TokenResponse]:
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
-async def create_token(body: TokenCreate, user: CurrentUser, db: DbSession) -> TokenCreated:
+async def create_token(body: TokenCreate, user: CurrentSubdomain, db: DbSession) -> TokenCreated:
     """Create a token; the full value is in this response only.
 
     Args:
@@ -42,7 +42,7 @@ async def create_token(body: TokenCreate, user: CurrentUser, db: DbSession) -> T
 
 
 @router.delete("/{token_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def revoke_token(token_id: uuid.UUID, user: CurrentUser, db: DbSession) -> Response:
+async def revoke_token(token_id: uuid.UUID, user: CurrentSubdomain, db: DbSession) -> Response:
     """Revoke a token immediately.
 
     Args:

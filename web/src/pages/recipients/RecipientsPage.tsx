@@ -53,20 +53,20 @@ export function RecipientsPage() {
 
   async function confirmDelete() {
     if (!deleting) return;
-    await run(remove.mutateAsync(deleting.id), "Recipient deleted");
+    await run(remove.mutateAsync(deleting.id), "Inbox deleted");
     setDeleting(null);
   }
 
   return (
     <>
       <PageHeader
-        title="Recipients"
+        title="Inboxes"
         description="Real inboxes. Aliases forward here, and only these addresses can reply through an alias. Aliases with no inbox ticked go to every default inbox."
       />
       <AddRecipientForm />
       {recipients.isPending ? <Skeleton className="h-24 w-full" /> : null}
       {recipients.isError ? (
-        <p className="text-sm text-destructive">{errorMessage(recipients.error, "Could not load recipients")}</p>
+        <p className="text-sm text-destructive">{errorMessage(recipients.error, "Could not load inboxes")}</p>
       ) : null}
       {recipients.data ? (
         <div className="overflow-hidden rounded-lg border">
@@ -99,7 +99,7 @@ export function RecipientsPage() {
       <ConfirmDialog
         open={deleting !== null}
         onOpenChange={(open) => !open && setDeleting(null)}
-        title="Delete this recipient?"
+        title="Delete this inbox?"
         description={`Aliases forwarding only to ${deleting?.email ?? ""} fall back to the default inboxes.`}
         confirmLabel="Delete"
         destructive

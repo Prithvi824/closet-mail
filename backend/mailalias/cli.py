@@ -6,10 +6,11 @@ import asyncio
 # 3rd party imports
 import typer
 from redis.asyncio import Redis
+from sqlalchemy import select
 
 # local imports
 from mailalias import __version__
-from mailalias.api.errors import DomainError
+from mailalias.api.errors import DomainError, NotFound
 from mailalias.config import get_settings
 from mailalias.db import get_engine, get_redis, get_session_factory
 from mailalias.integrations.cloudflare_api import CloudflareApi
@@ -19,8 +20,9 @@ from mailalias.integrations.rspamd import RspamdClient
 from mailalias.logging_setup import configure_logging
 from mailalias.mail.outbound import QueuedMailer, get_direct_mailer
 from mailalias.mail.processor import MailProcessor
-from mailalias.models import UserRole
+from mailalias.models import User, UserRole
 from mailalias.security.sessions import SessionStore
+from mailalias.services.subdomains import SubdomainService
 from mailalias.services.system_mail import SystemMailService
 from mailalias.services.users import UserService
 
@@ -132,6 +134,64 @@ def reset_password(
         typer.echo(f"error: {exc.message}", err=True)
         raise typer.Exit(1) from exc
     typer.echo(f"password for '{username}' updated; all sessions signed out")
+
+
+async def _create_subdomain(label: str, inbox: str, display_name: str | None) -> str:
+    """Create a subdomain as the operator and email its first inbox a verification link.
+
+    Args:
+        label: Subdomain label.
+        inbox: First inbox address.
+        display_name: Optional display name.
+    Returns:
+        The created label.
+    """
+    settings = get_settings()
+    mail = SystemMailService(get_direct_mailer(settings), settings)
+    try:
+        async with get_session_factory()() as db:
+            operator = await db.scalar(
+                select(User)
+                .where(User.role == UserRole.ADMIN, User.disabled_at.is_(None))
+                .order_by(User.created_at)
+            )
+            if operator is None:
+                raise NotFound("Create the operator account first (mailalias create-admin)")
+            user = await SubdomainService(db, settings).create(
+                label=label,
+                display_name=display_name,
+                inbox_email=inbox,
+                notes=None,
+                mail=mail,
+                actor=operator,
+            )
+            await db.commit()
+            return user.username
+    finally:
+        await get_engine().dispose()
+
+
+@app.command("create-subdomain")
+def create_subdomain(
+    label: str = typer.Option(..., help="Subdomain label, e.g. acme for acme.<alias domain>"),
+    inbox: str = typer.Option(..., help="First inbox (gets a verification link)"),
+    display_name: str | None = typer.Option(None, help="Name shown in the dashboard"),
+) -> None:
+    """Create a subdomain; add it under Cloudflare Email Routing -> Subdomains afterwards.
+
+    Args:
+        label: Subdomain label.
+        inbox: First inbox address.
+        display_name: Optional display name.
+    Returns:
+        None. Exits with code 1 on validation errors.
+    """
+    try:
+        created = asyncio.run(_create_subdomain(label, inbox, display_name))
+    except DomainError as exc:
+        typer.echo(f"error: {exc.message}", err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(f"subdomain '{created}' created; verification link sent to the inbox")
 
 
 @app.command("send-test-mail")

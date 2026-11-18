@@ -18,6 +18,8 @@ from mailalias.models import (
     DeliveryStatus,
     MailLog,
     Recipient,
+    SubdomainState,
+    SubdomainStatus,
     User,
 )
 from mailalias.security.crypto import lookup_hash
@@ -152,3 +154,43 @@ async def test_delivery_log_round_trip(session: AsyncSession) -> None:
         text("select sender_domain from mail_log where id = :i"), {"i": log.id}
     )
     assert raw is not None and "shop.example" not in raw
+
+
+async def test_subdomain_without_login_and_its_status_round_trip(session: AsyncSession) -> None:
+    """A subdomain row needs no email or password; its status row reads back.
+
+    Args:
+        session: Rolled-back test session.
+    Returns:
+        None.
+    """
+    user = User(username="acme", display_name="Acme Ltd", notes="pays yearly")
+    session.add(user)
+    await session.flush()
+    checked = datetime(2026, 11, 18, 8, 0, tzinfo=UTC)
+    session.add(
+        SubdomainStatus(
+            user_id=user.id,
+            state=SubdomainState.DNS_MISSING,
+            mx_ok=False,
+            spf_ok=None,
+            kv_ok=True,
+            detail="MX records missing",
+            checked_at=checked,
+        )
+    )
+    await session.commit()
+    session.expunge_all()
+    loaded = await session.scalar(select(User).where(User.username == "acme"))
+    assert loaded is not None
+    assert (loaded.email, loaded.password_hash, loaded.retired_at) == (None, None, None)
+    assert (loaded.display_name, loaded.notes) == ("Acme Ltd", "pays yearly")
+    status = await session.get(SubdomainStatus, user.id)
+    assert status is not None
+    assert (status.state, status.mx_ok, status.checked_at) == (
+        SubdomainState.DNS_MISSING,
+        False,
+        checked,
+    )
+    raw = await session.scalar(text("select notes from users where username = 'acme'"))
+    assert raw is not None and "yearly" not in raw

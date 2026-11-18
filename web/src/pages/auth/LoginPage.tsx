@@ -35,7 +35,7 @@ export function LoginPage() {
   return (
     <AuthCard
       title="Sign in"
-      description="Use the username from your invite."
+      description="Operator sign-in."
     >
       <form onSubmit={form.handleSubmit(onSubmit)} noValidate>
         <FieldGroup>

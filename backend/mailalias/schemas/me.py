@@ -30,12 +30,23 @@ class MeResponse(BaseModel):
 
 
 class SettingsUpdate(BaseModel):
-    """Partial preference update; omitted fields are unchanged."""
+    """Partial preference update of one subdomain; omitted fields are unchanged."""
 
     banner_position: BannerPosition | None = None
     alias_format: AliasFormat | None = None
     strip_trackers: bool | None = None
     subdomain_catchall: bool | None = None
+
+
+class SubdomainSettings(BaseModel):
+    """Forwarding preferences of one subdomain."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    banner_position: BannerPosition
+    alias_format: AliasFormat
+    strip_trackers: bool
+    subdomain_catchall: bool
 
 
 class TotpSetupResponse(BaseModel):

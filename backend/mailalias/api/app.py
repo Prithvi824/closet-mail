@@ -13,7 +13,6 @@ from mailalias.api.errors import install_error_handlers
 from mailalias.api.ratelimit import API_PREFIX, SecurityMiddleware
 from mailalias.api.routes import (
     actions,
-    admin,
     aliases,
     auth,
     blocklist,
@@ -23,8 +22,11 @@ from mailalias.api.routes import (
     hooks,
     labels,
     me,
+    operator,
     quarantine,
+    recipient_verify,
     recipients,
+    subdomain_settings,
     tokens,
 )
 from mailalias.config import get_settings
@@ -48,26 +50,30 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def build_api_router() -> APIRouter:
-    """Collect all `/api/v1` routers.
+    """Collect all `/api/v1` routers: public, operator, and per-subdomain under /subdomains/{x}.
 
     Returns:
         The versioned API router.
     """
     router = APIRouter(prefix=API_PREFIX)
+    for module in (auth, me, recipient_verify, operator):
+        router.include_router(module.router)
+    # Every router here resolves its owner through current_subdomain (see test_scoping).
+    # The path parameter is "subdomain": "label" is already the alias list's label filter.
+    scoped = APIRouter(prefix="/subdomains/{subdomain}")
     for module in (
-        auth,
-        me,
-        recipients,
         aliases,
         contacts,
         labels,
+        recipients,
         blocklist,
         quarantine,
         failed,
         tokens,
-        admin,
+        subdomain_settings,
     ):
-        router.include_router(module.router)
+        scoped.include_router(module.router)
+    router.include_router(scoped)
     return router
 
 

@@ -7,7 +7,7 @@ import uuid
 from fastapi import APIRouter, Response, status
 
 # local imports
-from mailalias.api.deps import AppSettings, CurrentUser, DbSession, Storage
+from mailalias.api.deps import AppSettings, CurrentSubdomain, DbSession, Storage
 from mailalias.schemas.quarantine import QuarantineResponse, ReleaseResponse
 from mailalias.services.quarantine import QuarantineService
 
@@ -16,7 +16,7 @@ router = APIRouter(prefix="/quarantine", tags=["quarantine"])
 
 @router.get("")
 async def list_quarantine(
-    user: CurrentUser, db: DbSession, settings: AppSettings, storage: Storage
+    user: CurrentSubdomain, db: DbSession, settings: AppSettings, storage: Storage
 ) -> list[QuarantineResponse]:
     """List pending quarantined messages.
 
@@ -31,7 +31,11 @@ async def list_quarantine(
 
 @router.post("/{item_id}/release", status_code=status.HTTP_202_ACCEPTED)
 async def release_quarantined(
-    item_id: uuid.UUID, user: CurrentUser, db: DbSession, settings: AppSettings, storage: Storage
+    item_id: uuid.UUID,
+    user: CurrentSubdomain,
+    db: DbSession,
+    settings: AppSettings,
+    storage: Storage,
 ) -> ReleaseResponse:
     """Queue delivery of a held message (the spam check is skipped).
 
@@ -47,7 +51,11 @@ async def release_quarantined(
 
 @router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_quarantined(
-    item_id: uuid.UUID, user: CurrentUser, db: DbSession, settings: AppSettings, storage: Storage
+    item_id: uuid.UUID,
+    user: CurrentSubdomain,
+    db: DbSession,
+    settings: AppSettings,
+    storage: Storage,
 ) -> Response:
     """Delete a held message for good.
 

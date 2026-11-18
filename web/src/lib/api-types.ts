@@ -254,59 +254,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/me/activity": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Activity
-         * @description Daily totals for the last `days` days and the last 100 handled messages.
-         *
-         *     Args:
-         *         user, db: Request dependencies.
-         *         days: Window for the daily totals (1-90).
-         *     Returns:
-         *         The activity summary (no correspondent addresses or subjects).
-         */
-        get: operations["get_activity_api_v1_me_activity_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/me/settings": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /**
-         * Update Settings
-         * @description Update preferences; only fields present in the body change.
-         *
-         *     Args:
-         *         body: Partial settings.
-         *         user: Authenticated user.
-         *         db: Database session.
-         *     Returns:
-         *         The updated profile.
-         */
-        patch: operations["update_settings_api_v1_me_settings_patch"];
-        trace?: never;
-    };
     "/api/v1/me/totp/setup": {
         parameters: {
             query?: never;
@@ -491,139 +438,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/recipients": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Recipients
-         * @description List the user's recipients.
-         *
-         *     Args:
-         *         user: Authenticated user.
-         *         db: Database session.
-         *     Returns:
-         *         Recipients, oldest first.
-         */
-        get: operations["list_recipients_api_v1_recipients_get"];
-        put?: never;
-        /**
-         * Add Recipient
-         * @description Add a recipient and send its verification email.
-         *
-         *     Args:
-         *         body: Address to add.
-         *         user: Authenticated user.
-         *         db: Database session.
-         *         mail: System mail service.
-         *     Returns:
-         *         The new (unverified) recipient.
-         */
-        post: operations["add_recipient_api_v1_recipients_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/recipients/{recipient_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Delete Recipient
-         * @description Delete a recipient.
-         *
-         *     Args:
-         *         recipient_id: Recipient id.
-         *         user: Authenticated user.
-         *         db: Database session.
-         *     Returns:
-         *         None (204).
-         */
-        delete: operations["delete_recipient_api_v1_recipients__recipient_id__delete"];
-        options?: never;
-        head?: never;
-        /**
-         * Update Recipient
-         * @description Enable/disable a recipient or change whether it is a default inbox.
-         *
-         *     Args:
-         *         recipient_id: Recipient id.
-         *         body: Fields to change.
-         *         user: Authenticated user.
-         *         db: Database session.
-         *     Returns:
-         *         The updated recipient.
-         */
-        patch: operations["update_recipient_api_v1_recipients__recipient_id__patch"];
-        trace?: never;
-    };
-    "/api/v1/recipients/{recipient_id}/resend-verification": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Resend Verification
-         * @description Send a new verification email.
-         *
-         *     Args:
-         *         recipient_id: Recipient id.
-         *         user: Authenticated user.
-         *         db: Database session.
-         *         mail: System mail service.
-         *     Returns:
-         *         Acknowledgement.
-         */
-        post: operations["resend_verification_api_v1_recipients__recipient_id__resend_verification_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/recipients/{recipient_id}/pgp": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Set Pgp Key
-         * @description Set or clear the recipient's PGP public key.
-         *
-         *     Args:
-         *         recipient_id: Recipient id.
-         *         body: Key (null clears) and subject protection flag.
-         *         user: Authenticated user.
-         *         db: Database session.
-         *     Returns:
-         *         The updated recipient.
-         */
-        put: operations["set_pgp_key_api_v1_recipients__recipient_id__pgp_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/recipients/verify/{token}": {
         parameters: {
             query?: never;
@@ -660,7 +474,181 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/aliases": {
+    "/api/v1/operator/subdomains": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Subdomains
+         * @description Every subdomain with its counts and status, the operator's own first.
+         *
+         *     Args:
+         *         operator, db, settings: Request dependencies.
+         *     Returns:
+         *         The subdomains.
+         */
+        get: operations["list_subdomains_api_v1_operator_subdomains_get"];
+        put?: never;
+        /**
+         * Create Subdomain
+         * @description Create a subdomain; its first inbox is emailed a verification link.
+         *
+         *     Args:
+         *         body: Label, display name, first inbox and notes.
+         *         operator, db, settings, mail: Request dependencies.
+         *     Returns:
+         *         The new subdomain.
+         */
+        post: operations["create_subdomain_api_v1_operator_subdomains_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/operator/subdomains/{label}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Subdomain
+         * @description One subdomain.
+         *
+         *     Args:
+         *         label: Subdomain label.
+         *         operator, db, settings: Request dependencies.
+         *     Returns:
+         *         The subdomain.
+         */
+        get: operations["get_subdomain_api_v1_operator_subdomains__label__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Subdomain
+         * @description Edit name, notes or limits, or suspend/resume.
+         *
+         *     Args:
+         *         label: Subdomain label.
+         *         body: Fields to change.
+         *         operator, db, settings: Request dependencies.
+         *     Returns:
+         *         The updated subdomain.
+         */
+        patch: operations["update_subdomain_api_v1_operator_subdomains__label__patch"];
+        trace?: never;
+    };
+    "/api/v1/operator/subdomains/{label}/retire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retire Subdomain
+         * @description Retire a subdomain: aliases forgotten (addresses stay reserved), inboxes disabled.
+         *
+         *     Args:
+         *         label: Subdomain label.
+         *         operator, db, settings: Request dependencies.
+         *     Returns:
+         *         The retired subdomain.
+         */
+        post: operations["retire_subdomain_api_v1_operator_subdomains__label__retire_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/operator/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Health
+         * @description Processor heartbeat, queue backlogs, today's sends, bounces and KV reconcile state.
+         *
+         *     Args:
+         *         operator, db, settings, queues: Request dependencies.
+         *     Returns:
+         *         The health snapshot.
+         */
+        get: operations["health_api_v1_operator_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/operator/dlq": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Dlq
+         * @description Peek at dead-lettered jobs (metadata only; they stay in the DLQ).
+         *
+         *     Args:
+         *         operator, db, settings, queues: Request dependencies.
+         *     Returns:
+         *         Job metadata.
+         */
+        get: operations["list_dlq_api_v1_operator_dlq_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/operator/dlq/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry Dlq
+         * @description Move dead-lettered jobs back to the inbound queue.
+         *
+         *     Args:
+         *         body: Optional r2 keys to move (default: all).
+         *         operator, db, settings, queues: Request dependencies.
+         *     Returns:
+         *         {"moved": n}.
+         */
+        post: operations["retry_dlq_api_v1_operator_dlq_retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/subdomains/{subdomain}/aliases": {
         parameters: {
             query?: never;
             header?: never;
@@ -683,7 +671,7 @@ export interface paths {
          *     Returns:
          *         A page of aliases.
          */
-        get: operations["list_aliases_api_v1_aliases_get"];
+        get: operations["list_aliases_api_v1_subdomains__subdomain__aliases_get"];
         put?: never;
         /**
          * Create Alias
@@ -697,14 +685,14 @@ export interface paths {
          *     Returns:
          *         The new alias.
          */
-        post: operations["create_alias_api_v1_aliases_post"];
+        post: operations["create_alias_api_v1_subdomains__subdomain__aliases_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/aliases/bulk": {
+    "/api/v1/subdomains/{subdomain}/aliases/bulk": {
         parameters: {
             query?: never;
             header?: never;
@@ -725,14 +713,14 @@ export interface paths {
          *     Returns:
          *         {"changed": n}.
          */
-        post: operations["bulk_action_api_v1_aliases_bulk_post"];
+        post: operations["bulk_action_api_v1_subdomains__subdomain__aliases_bulk_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/aliases/{alias_id}": {
+    "/api/v1/subdomains/{subdomain}/aliases/{alias_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -751,7 +739,7 @@ export interface paths {
          *     Returns:
          *         The alias.
          */
-        get: operations["get_alias_api_v1_aliases__alias_id__get"];
+        get: operations["get_alias_api_v1_subdomains__subdomain__aliases__alias_id__get"];
         put?: never;
         post?: never;
         /**
@@ -766,7 +754,7 @@ export interface paths {
          *     Returns:
          *         The deleted alias.
          */
-        delete: operations["delete_alias_api_v1_aliases__alias_id__delete"];
+        delete: operations["delete_alias_api_v1_subdomains__subdomain__aliases__alias_id__delete"];
         options?: never;
         head?: never;
         /**
@@ -782,10 +770,10 @@ export interface paths {
          *     Returns:
          *         The updated alias.
          */
-        patch: operations["update_alias_api_v1_aliases__alias_id__patch"];
+        patch: operations["update_alias_api_v1_subdomains__subdomain__aliases__alias_id__patch"];
         trace?: never;
     };
-    "/api/v1/aliases/{alias_id}/restore": {
+    "/api/v1/subdomains/{subdomain}/aliases/{alias_id}/restore": {
         parameters: {
             query?: never;
             header?: never;
@@ -806,14 +794,14 @@ export interface paths {
          *     Returns:
          *         The restored alias.
          */
-        post: operations["restore_alias_api_v1_aliases__alias_id__restore_post"];
+        post: operations["restore_alias_api_v1_subdomains__subdomain__aliases__alias_id__restore_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/aliases/{alias_id}/forget": {
+    "/api/v1/subdomains/{subdomain}/aliases/{alias_id}/forget": {
         parameters: {
             query?: never;
             header?: never;
@@ -834,14 +822,14 @@ export interface paths {
          *     Returns:
          *         None (204).
          */
-        post: operations["forget_alias_api_v1_aliases__alias_id__forget_post"];
+        post: operations["forget_alias_api_v1_subdomains__subdomain__aliases__alias_id__forget_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/aliases/{alias_id}/contacts": {
+    "/api/v1/subdomains/{subdomain}/aliases/{alias_id}/contacts": {
         parameters: {
             query?: never;
             header?: never;
@@ -860,7 +848,7 @@ export interface paths {
          *     Returns:
          *         Contacts, most recently seen first.
          */
-        get: operations["list_contacts_api_v1_aliases__alias_id__contacts_get"];
+        get: operations["list_contacts_api_v1_subdomains__subdomain__aliases__alias_id__contacts_get"];
         put?: never;
         /**
          * Create Contact
@@ -875,14 +863,14 @@ export interface paths {
          *     Returns:
          *         The contact with its token address.
          */
-        post: operations["create_contact_api_v1_aliases__alias_id__contacts_post"];
+        post: operations["create_contact_api_v1_subdomains__subdomain__aliases__alias_id__contacts_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/contacts/{contact_id}": {
+    "/api/v1/subdomains/{subdomain}/contacts/{contact_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -908,10 +896,10 @@ export interface paths {
          *     Returns:
          *         The contact.
          */
-        patch: operations["update_contact_api_v1_contacts__contact_id__patch"];
+        patch: operations["update_contact_api_v1_subdomains__subdomain__contacts__contact_id__patch"];
         trace?: never;
     };
-    "/api/v1/labels": {
+    "/api/v1/subdomains/{subdomain}/labels": {
         parameters: {
             query?: never;
             header?: never;
@@ -928,7 +916,7 @@ export interface paths {
          *     Returns:
          *         Labels by name.
          */
-        get: operations["list_labels_api_v1_labels_get"];
+        get: operations["list_labels_api_v1_subdomains__subdomain__labels_get"];
         put?: never;
         /**
          * Create Label
@@ -941,14 +929,14 @@ export interface paths {
          *     Returns:
          *         The label.
          */
-        post: operations["create_label_api_v1_labels_post"];
+        post: operations["create_label_api_v1_subdomains__subdomain__labels_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/labels/{label_id}": {
+    "/api/v1/subdomains/{subdomain}/labels/{label_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -969,7 +957,7 @@ export interface paths {
          *     Returns:
          *         None (204).
          */
-        delete: operations["delete_label_api_v1_labels__label_id__delete"];
+        delete: operations["delete_label_api_v1_subdomains__subdomain__labels__label_id__delete"];
         options?: never;
         head?: never;
         /**
@@ -984,10 +972,143 @@ export interface paths {
          *     Returns:
          *         The label.
          */
-        patch: operations["update_label_api_v1_labels__label_id__patch"];
+        patch: operations["update_label_api_v1_subdomains__subdomain__labels__label_id__patch"];
         trace?: never;
     };
-    "/api/v1/blocklist": {
+    "/api/v1/subdomains/{subdomain}/recipients": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Recipients
+         * @description List the user's recipients.
+         *
+         *     Args:
+         *         user: Authenticated user.
+         *         db: Database session.
+         *     Returns:
+         *         Recipients, oldest first.
+         */
+        get: operations["list_recipients_api_v1_subdomains__subdomain__recipients_get"];
+        put?: never;
+        /**
+         * Add Recipient
+         * @description Add a recipient and send its verification email.
+         *
+         *     Args:
+         *         body: Address to add.
+         *         user: Authenticated user.
+         *         db: Database session.
+         *         mail: System mail service.
+         *     Returns:
+         *         The new (unverified) recipient.
+         */
+        post: operations["add_recipient_api_v1_subdomains__subdomain__recipients_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/subdomains/{subdomain}/recipients/{recipient_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Recipient
+         * @description Delete a recipient.
+         *
+         *     Args:
+         *         recipient_id: Recipient id.
+         *         user: Authenticated user.
+         *         db: Database session.
+         *     Returns:
+         *         None (204).
+         */
+        delete: operations["delete_recipient_api_v1_subdomains__subdomain__recipients__recipient_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Recipient
+         * @description Enable/disable a recipient or change whether it is a default inbox.
+         *
+         *     Args:
+         *         recipient_id: Recipient id.
+         *         body: Fields to change.
+         *         user: Authenticated user.
+         *         db: Database session.
+         *     Returns:
+         *         The updated recipient.
+         */
+        patch: operations["update_recipient_api_v1_subdomains__subdomain__recipients__recipient_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/subdomains/{subdomain}/recipients/{recipient_id}/resend-verification": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resend Verification
+         * @description Send a new verification email.
+         *
+         *     Args:
+         *         recipient_id: Recipient id.
+         *         user: Authenticated user.
+         *         db: Database session.
+         *         mail: System mail service.
+         *     Returns:
+         *         Acknowledgement.
+         */
+        post: operations["resend_verification_api_v1_subdomains__subdomain__recipients__recipient_id__resend_verification_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/subdomains/{subdomain}/recipients/{recipient_id}/pgp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Pgp Key
+         * @description Set or clear the recipient's PGP public key.
+         *
+         *     Args:
+         *         recipient_id: Recipient id.
+         *         body: Key (null clears) and subject protection flag.
+         *         user: Authenticated user.
+         *         db: Database session.
+         *     Returns:
+         *         The updated recipient.
+         */
+        put: operations["set_pgp_key_api_v1_subdomains__subdomain__recipients__recipient_id__pgp_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/subdomains/{subdomain}/blocklist": {
         parameters: {
             query?: never;
             header?: never;
@@ -1003,7 +1124,7 @@ export interface paths {
          *     Returns:
          *         Entries, newest first.
          */
-        get: operations["list_blocklist_api_v1_blocklist_get"];
+        get: operations["list_blocklist_api_v1_subdomains__subdomain__blocklist_get"];
         put?: never;
         /**
          * Add Blocklist
@@ -1015,14 +1136,14 @@ export interface paths {
          *     Returns:
          *         The new entry.
          */
-        post: operations["add_blocklist_api_v1_blocklist_post"];
+        post: operations["add_blocklist_api_v1_subdomains__subdomain__blocklist_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/blocklist/{entry_id}": {
+    "/api/v1/subdomains/{subdomain}/blocklist/{entry_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1042,13 +1163,13 @@ export interface paths {
          *     Returns:
          *         204 No Content.
          */
-        delete: operations["delete_blocklist_api_v1_blocklist__entry_id__delete"];
+        delete: operations["delete_blocklist_api_v1_subdomains__subdomain__blocklist__entry_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/quarantine": {
+    "/api/v1/subdomains/{subdomain}/quarantine": {
         parameters: {
             query?: never;
             header?: never;
@@ -1064,7 +1185,7 @@ export interface paths {
          *     Returns:
          *         Held messages, newest first.
          */
-        get: operations["list_quarantine_api_v1_quarantine_get"];
+        get: operations["list_quarantine_api_v1_subdomains__subdomain__quarantine_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1073,7 +1194,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/quarantine/{item_id}/release": {
+    "/api/v1/subdomains/{subdomain}/quarantine/{item_id}/release": {
         parameters: {
             query?: never;
             header?: never;
@@ -1092,14 +1213,14 @@ export interface paths {
          *     Returns:
          *         Accepted.
          */
-        post: operations["release_quarantined_api_v1_quarantine__item_id__release_post"];
+        post: operations["release_quarantined_api_v1_subdomains__subdomain__quarantine__item_id__release_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/quarantine/{item_id}": {
+    "/api/v1/subdomains/{subdomain}/quarantine/{item_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1119,13 +1240,13 @@ export interface paths {
          *     Returns:
          *         204 No Content.
          */
-        delete: operations["delete_quarantined_api_v1_quarantine__item_id__delete"];
+        delete: operations["delete_quarantined_api_v1_subdomains__subdomain__quarantine__item_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/failed-deliveries": {
+    "/api/v1/subdomains/{subdomain}/failed-deliveries": {
         parameters: {
             query?: never;
             header?: never;
@@ -1141,7 +1262,7 @@ export interface paths {
          *     Returns:
          *         Up to 200 entries, newest first.
          */
-        get: operations["list_failed_api_v1_failed_deliveries_get"];
+        get: operations["list_failed_api_v1_subdomains__subdomain__failed_deliveries_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1150,7 +1271,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/tokens": {
+    "/api/v1/subdomains/{subdomain}/tokens": {
         parameters: {
             query?: never;
             header?: never;
@@ -1166,7 +1287,7 @@ export interface paths {
          *     Returns:
          *         Tokens, newest first (no secrets).
          */
-        get: operations["list_tokens_api_v1_tokens_get"];
+        get: operations["list_tokens_api_v1_subdomains__subdomain__tokens_get"];
         put?: never;
         /**
          * Create Token
@@ -1178,14 +1299,14 @@ export interface paths {
          *     Returns:
          *         The token including its secret value.
          */
-        post: operations["create_token_api_v1_tokens_post"];
+        post: operations["create_token_api_v1_subdomains__subdomain__tokens_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/tokens/{token_id}": {
+    "/api/v1/subdomains/{subdomain}/tokens/{token_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1205,13 +1326,13 @@ export interface paths {
          *     Returns:
          *         204 No Content.
          */
-        delete: operations["revoke_token_api_v1_tokens__token_id__delete"];
+        delete: operations["revoke_token_api_v1_subdomains__subdomain__tokens__token_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/users": {
+    "/api/v1/subdomains/{subdomain}/settings": {
         parameters: {
             query?: never;
             header?: never;
@@ -1219,51 +1340,35 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List Users
-         * @description List every user with their alias count.
+         * Read Settings
+         * @description The subdomain's forwarding preferences.
          *
          *     Args:
-         *         admin, db, settings: Request dependencies.
+         *         user: The subdomain.
          *     Returns:
-         *         Users, oldest first.
+         *         Its preferences.
          */
-        get: operations["list_users_api_v1_admin_users_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/users/{user_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
+        get: operations["read_settings_api_v1_subdomains__subdomain__settings_get"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
         /**
-         * Update User
-         * @description Disable/enable a user or override their limits.
+         * Update Settings
+         * @description Update preferences; only fields present in the body change.
          *
          *     Args:
-         *         user_id: Target user.
-         *         body: Changes (`limits: null` resets to defaults).
-         *         admin, db, settings: Request dependencies.
+         *         body: Partial settings.
+         *         user: The subdomain.
+         *         db: Database session.
          *     Returns:
-         *         The updated user.
+         *         The updated preferences.
          */
-        patch: operations["update_user_api_v1_admin_users__user_id__patch"];
+        patch: operations["update_settings_api_v1_subdomains__subdomain__settings_patch"];
         trace?: never;
     };
-    "/api/v1/admin/health": {
+    "/api/v1/subdomains/{subdomain}/activity": {
         parameters: {
             query?: never;
             header?: never;
@@ -1271,68 +1376,18 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Health
-         * @description Processor heartbeat, queue backlogs, today's sends, bounces and KV reconcile state.
+         * Get Activity
+         * @description Daily totals for the last `days` days and the last 100 handled messages.
          *
          *     Args:
-         *         admin, db, settings, queues: Request dependencies.
+         *         user, db: The subdomain and the database session.
+         *         days: Window for the daily totals (1-90).
          *     Returns:
-         *         The health snapshot.
+         *         The activity summary.
          */
-        get: operations["health_api_v1_admin_health_get"];
+        get: operations["get_activity_api_v1_subdomains__subdomain__activity_get"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/dlq": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Dlq
-         * @description Peek at dead-lettered jobs (metadata only; they stay in the DLQ).
-         *
-         *     Args:
-         *         admin, db, settings, queues: Request dependencies.
-         *     Returns:
-         *         Job metadata.
-         */
-        get: operations["list_dlq_api_v1_admin_dlq_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/dlq/retry": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Retry Dlq
-         * @description Move dead-lettered jobs back to the inbound queue.
-         *
-         *     Args:
-         *         body: Optional r2 keys to move (default: all).
-         *         admin, db, settings, queues: Request dependencies.
-         *     Returns:
-         *         {"moved": n}.
-         */
-        post: operations["retry_dlq_api_v1_admin_dlq_retry_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1352,49 +1407,6 @@ export interface components {
             daily: components["schemas"]["DailyActivity"][];
             /** Recent */
             recent: components["schemas"]["RecentMail"][];
-        };
-        /**
-         * AdminUserResponse
-         * @description A user as seen by an admin.
-         */
-        AdminUserResponse: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Username */
-            username: string;
-            /** Email */
-            email: string;
-            role: components["schemas"]["UserRole"];
-            /** Disabled */
-            disabled: boolean;
-            /** Totp Enabled */
-            totp_enabled: boolean;
-            /** Limits */
-            limits: {
-                [key: string]: number;
-            } | null;
-            /** Alias Count */
-            alias_count: number;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-        };
-        /**
-         * AdminUserUpdate
-         * @description Partial update; `limits: null` resets to the defaults.
-         */
-        AdminUserUpdate: {
-            /** Disabled */
-            disabled?: boolean | null;
-            /** Limits */
-            limits?: {
-                [key: string]: number;
-            } | null;
         };
         /**
          * AliasBulk
@@ -2018,7 +2030,7 @@ export interface components {
         };
         /**
          * SettingsUpdate
-         * @description Partial preference update; omitted fields are unchanged.
+         * @description Partial preference update of one subdomain; omitted fields are unchanged.
          */
         SettingsUpdate: {
             banner_position?: components["schemas"]["BannerPosition"] | null;
@@ -2027,6 +2039,130 @@ export interface components {
             strip_trackers?: boolean | null;
             /** Subdomain Catchall */
             subdomain_catchall?: boolean | null;
+        };
+        /**
+         * SubdomainCreate
+         * @description Create a subdomain with its first inbox (sent a verification link).
+         */
+        SubdomainCreate: {
+            /** Label */
+            label: string;
+            /** Display Name */
+            display_name?: string | null;
+            /**
+             * Inbox Email
+             * Format: email
+             */
+            inbox_email: string;
+            /** Notes */
+            notes?: string | null;
+        };
+        /**
+         * SubdomainResponse
+         * @description A subdomain as the operator sees it.
+         */
+        SubdomainResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Label */
+            label: string;
+            /** Domain */
+            domain: string;
+            /** Display Name */
+            display_name: string | null;
+            /** Notes */
+            notes: string | null;
+            /** Is Operator */
+            is_operator: boolean;
+            /** Suspended */
+            suspended: boolean;
+            /** Retired */
+            retired: boolean;
+            /** Catchall */
+            catchall: boolean;
+            /** Inbox Count */
+            inbox_count: number;
+            /** Default Inbox Count */
+            default_inbox_count: number;
+            /** Alias Count */
+            alias_count: number;
+            /** Received Today */
+            received_today: number;
+            /** Sends Today */
+            sends_today: number;
+            /** Send Share */
+            send_share: number;
+            /** Limits */
+            limits: {
+                [key: string]: number;
+            } | null;
+            status: components["schemas"]["SubdomainStatusOut"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * SubdomainSettings
+         * @description Forwarding preferences of one subdomain.
+         */
+        SubdomainSettings: {
+            banner_position: components["schemas"]["BannerPosition"];
+            alias_format: components["schemas"]["AliasFormat"];
+            /** Strip Trackers */
+            strip_trackers: boolean;
+            /** Subdomain Catchall */
+            subdomain_catchall: boolean;
+        };
+        /**
+         * SubdomainState
+         * @description Overall readiness of a subdomain to receive mail.
+         * @enum {string}
+         */
+        SubdomainState: "ready" | "dns_missing" | "no_inbox" | "suspended" | "retired" | "unknown";
+        /**
+         * SubdomainStatusOut
+         * @description Latest routing check of a subdomain; null values were not checked or could not be read.
+         */
+        SubdomainStatusOut: {
+            state: components["schemas"]["SubdomainState"];
+            /** Mx Ok */
+            mx_ok: boolean | null;
+            /** Spf Ok */
+            spf_ok: boolean | null;
+            /** Kv Ok */
+            kv_ok: boolean | null;
+            /** Detail */
+            detail: string | null;
+            /** Checked At */
+            checked_at: string | null;
+            /** Last Mail At */
+            last_mail_at: string | null;
+        };
+        /**
+         * SubdomainUpdate
+         * @description Partial update; `clear_limits` resets every limit to the defaults.
+         */
+        SubdomainUpdate: {
+            /** Display Name */
+            display_name?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Suspended */
+            suspended?: boolean | null;
+            /** Limits */
+            limits?: {
+                [key: string]: number;
+            } | null;
+            /**
+             * Clear Limits
+             * @default false
+             */
+            clear_limits?: boolean;
         };
         /**
          * TokenCreate
@@ -2401,70 +2537,6 @@ export interface operations {
             };
         };
     };
-    get_activity_api_v1_me_activity_get: {
-        parameters: {
-            query?: {
-                days?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ActivityResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_settings_api_v1_me_settings_patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SettingsUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MeResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     totp_setup_api_v1_me_totp_setup_post: {
         parameters: {
             query?: never;
@@ -2651,191 +2723,6 @@ export interface operations {
             };
         };
     };
-    list_recipients_api_v1_recipients_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RecipientResponse"][];
-                };
-            };
-        };
-    };
-    add_recipient_api_v1_recipients_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RecipientCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RecipientResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_recipient_api_v1_recipients__recipient_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                recipient_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_recipient_api_v1_recipients__recipient_id__patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                recipient_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RecipientUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RecipientResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    resend_verification_api_v1_recipients__recipient_id__resend_verification_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                recipient_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    set_pgp_key_api_v1_recipients__recipient_id__pgp_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                recipient_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PgpKeyUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RecipientResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     verify_page_api_v1_recipients_verify__token__get: {
         parameters: {
             query?: never;
@@ -2898,7 +2785,232 @@ export interface operations {
             };
         };
     };
-    list_aliases_api_v1_aliases_get: {
+    list_subdomains_api_v1_operator_subdomains_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubdomainResponse"][];
+                };
+            };
+        };
+    };
+    create_subdomain_api_v1_operator_subdomains_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubdomainCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubdomainResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_subdomain_api_v1_operator_subdomains__label__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                label: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubdomainResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_subdomain_api_v1_operator_subdomains__label__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                label: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubdomainUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubdomainResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retire_subdomain_api_v1_operator_subdomains__label__retire_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                label: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubdomainResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    health_api_v1_operator_health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+        };
+    };
+    list_dlq_api_v1_operator_dlq_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DlqItemResponse"][];
+                };
+            };
+        };
+    };
+    retry_dlq_api_v1_operator_dlq_retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DlqRetryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: number;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_aliases_api_v1_subdomains__subdomain__aliases_get: {
         parameters: {
             query?: {
                 q?: string | null;
@@ -2908,7 +3020,9 @@ export interface operations {
                 per_page?: number;
             };
             header?: never;
-            path?: never;
+            path: {
+                subdomain: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -2933,11 +3047,13 @@ export interface operations {
             };
         };
     };
-    create_alias_api_v1_aliases_post: {
+    create_alias_api_v1_subdomains__subdomain__aliases_post: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                subdomain: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -2966,11 +3082,13 @@ export interface operations {
             };
         };
     };
-    bulk_action_api_v1_aliases_bulk_post: {
+    bulk_action_api_v1_subdomains__subdomain__aliases_bulk_post: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                subdomain: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -3001,12 +3119,13 @@ export interface operations {
             };
         };
     };
-    get_alias_api_v1_aliases__alias_id__get: {
+    get_alias_api_v1_subdomains__subdomain__aliases__alias_id__get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 alias_id: string;
+                subdomain: string;
             };
             cookie?: never;
         };
@@ -3032,12 +3151,13 @@ export interface operations {
             };
         };
     };
-    delete_alias_api_v1_aliases__alias_id__delete: {
+    delete_alias_api_v1_subdomains__subdomain__aliases__alias_id__delete: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 alias_id: string;
+                subdomain: string;
             };
             cookie?: never;
         };
@@ -3063,12 +3183,13 @@ export interface operations {
             };
         };
     };
-    update_alias_api_v1_aliases__alias_id__patch: {
+    update_alias_api_v1_subdomains__subdomain__aliases__alias_id__patch: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 alias_id: string;
+                subdomain: string;
             };
             cookie?: never;
         };
@@ -3098,12 +3219,13 @@ export interface operations {
             };
         };
     };
-    restore_alias_api_v1_aliases__alias_id__restore_post: {
+    restore_alias_api_v1_subdomains__subdomain__aliases__alias_id__restore_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 alias_id: string;
+                subdomain: string;
             };
             cookie?: never;
         };
@@ -3129,12 +3251,13 @@ export interface operations {
             };
         };
     };
-    forget_alias_api_v1_aliases__alias_id__forget_post: {
+    forget_alias_api_v1_subdomains__subdomain__aliases__alias_id__forget_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 alias_id: string;
+                subdomain: string;
             };
             cookie?: never;
         };
@@ -3158,12 +3281,13 @@ export interface operations {
             };
         };
     };
-    list_contacts_api_v1_aliases__alias_id__contacts_get: {
+    list_contacts_api_v1_subdomains__subdomain__aliases__alias_id__contacts_get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 alias_id: string;
+                subdomain: string;
             };
             cookie?: never;
         };
@@ -3189,12 +3313,13 @@ export interface operations {
             };
         };
     };
-    create_contact_api_v1_aliases__alias_id__contacts_post: {
+    create_contact_api_v1_subdomains__subdomain__aliases__alias_id__contacts_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 alias_id: string;
+                subdomain: string;
             };
             cookie?: never;
         };
@@ -3224,12 +3349,13 @@ export interface operations {
             };
         };
     };
-    update_contact_api_v1_contacts__contact_id__patch: {
+    update_contact_api_v1_subdomains__subdomain__contacts__contact_id__patch: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 contact_id: string;
+                subdomain: string;
             };
             cookie?: never;
         };
@@ -3259,11 +3385,13 @@ export interface operations {
             };
         };
     };
-    list_labels_api_v1_labels_get: {
+    list_labels_api_v1_subdomains__subdomain__labels_get: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                subdomain: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3277,13 +3405,24 @@ export interface operations {
                     "application/json": components["schemas"]["LabelResponse"][];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    create_label_api_v1_labels_post: {
+    create_label_api_v1_subdomains__subdomain__labels_post: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                subdomain: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -3312,12 +3451,13 @@ export interface operations {
             };
         };
     };
-    delete_label_api_v1_labels__label_id__delete: {
+    delete_label_api_v1_subdomains__subdomain__labels__label_id__delete: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 label_id: string;
+                subdomain: string;
             };
             cookie?: never;
         };
@@ -3341,12 +3481,13 @@ export interface operations {
             };
         };
     };
-    update_label_api_v1_labels__label_id__patch: {
+    update_label_api_v1_subdomains__subdomain__labels__label_id__patch: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 label_id: string;
+                subdomain: string;
             };
             cookie?: never;
         };
@@ -3376,11 +3517,215 @@ export interface operations {
             };
         };
     };
-    list_blocklist_api_v1_blocklist_get: {
+    list_recipients_api_v1_subdomains__subdomain__recipients_get: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                subdomain: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecipientResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_recipient_api_v1_subdomains__subdomain__recipients_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                subdomain: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecipientCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecipientResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_recipient_api_v1_subdomains__subdomain__recipients__recipient_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recipient_id: string;
+                subdomain: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_recipient_api_v1_subdomains__subdomain__recipients__recipient_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recipient_id: string;
+                subdomain: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecipientUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecipientResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resend_verification_api_v1_subdomains__subdomain__recipients__recipient_id__resend_verification_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recipient_id: string;
+                subdomain: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_pgp_key_api_v1_subdomains__subdomain__recipients__recipient_id__pgp_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recipient_id: string;
+                subdomain: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PgpKeyUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecipientResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_blocklist_api_v1_subdomains__subdomain__blocklist_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                subdomain: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3394,13 +3739,24 @@ export interface operations {
                     "application/json": components["schemas"]["BlocklistResponse"][];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    add_blocklist_api_v1_blocklist_post: {
+    add_blocklist_api_v1_subdomains__subdomain__blocklist_post: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                subdomain: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -3429,12 +3785,13 @@ export interface operations {
             };
         };
     };
-    delete_blocklist_api_v1_blocklist__entry_id__delete: {
+    delete_blocklist_api_v1_subdomains__subdomain__blocklist__entry_id__delete: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 entry_id: string;
+                subdomain: string;
             };
             cookie?: never;
         };
@@ -3458,11 +3815,13 @@ export interface operations {
             };
         };
     };
-    list_quarantine_api_v1_quarantine_get: {
+    list_quarantine_api_v1_subdomains__subdomain__quarantine_get: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                subdomain: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3476,14 +3835,24 @@ export interface operations {
                     "application/json": components["schemas"]["QuarantineResponse"][];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    release_quarantined_api_v1_quarantine__item_id__release_post: {
+    release_quarantined_api_v1_subdomains__subdomain__quarantine__item_id__release_post: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 item_id: string;
+                subdomain: string;
             };
             cookie?: never;
         };
@@ -3509,12 +3878,13 @@ export interface operations {
             };
         };
     };
-    delete_quarantined_api_v1_quarantine__item_id__delete: {
+    delete_quarantined_api_v1_subdomains__subdomain__quarantine__item_id__delete: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 item_id: string;
+                subdomain: string;
             };
             cookie?: never;
         };
@@ -3538,11 +3908,13 @@ export interface operations {
             };
         };
     };
-    list_failed_api_v1_failed_deliveries_get: {
+    list_failed_api_v1_subdomains__subdomain__failed_deliveries_get: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                subdomain: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3556,13 +3928,24 @@ export interface operations {
                     "application/json": components["schemas"]["FailedDeliveryResponse"][];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    list_tokens_api_v1_tokens_get: {
+    list_tokens_api_v1_subdomains__subdomain__tokens_get: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                subdomain: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3576,13 +3959,24 @@ export interface operations {
                     "application/json": components["schemas"]["TokenResponse"][];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    create_token_api_v1_tokens_post: {
+    create_token_api_v1_subdomains__subdomain__tokens_post: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                subdomain: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -3611,12 +4005,13 @@ export interface operations {
             };
         };
     };
-    revoke_token_api_v1_tokens__token_id__delete: {
+    revoke_token_api_v1_subdomains__subdomain__tokens__token_id__delete: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 token_id: string;
+                subdomain: string;
             };
             cookie?: never;
         };
@@ -3640,11 +4035,13 @@ export interface operations {
             };
         };
     };
-    list_users_api_v1_admin_users_get: {
+    read_settings_api_v1_subdomains__subdomain__settings_get: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                subdomain: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3655,33 +4052,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AdminUserResponse"][];
-                };
-            };
-        };
-    };
-    update_user_api_v1_admin_users__user_id__patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                user_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AdminUserUpdate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AdminUserResponse"];
+                    "application/json": components["schemas"]["SubdomainSettings"];
                 };
             };
             /** @description Validation Error */
@@ -3695,56 +4066,18 @@ export interface operations {
             };
         };
     };
-    health_api_v1_admin_health_get: {
+    update_settings_api_v1_subdomains__subdomain__settings_patch: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HealthResponse"];
-                };
+            path: {
+                subdomain: string;
             };
-        };
-    };
-    list_dlq_api_v1_admin_dlq_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DlqItemResponse"][];
-                };
-            };
-        };
-    };
-    retry_dlq_api_v1_admin_dlq_retry_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["DlqRetryRequest"];
+                "application/json": components["schemas"]["SettingsUpdate"];
             };
         };
         responses: {
@@ -3754,9 +4087,40 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: number;
-                    };
+                    "application/json": components["schemas"]["SubdomainSettings"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_activity_api_v1_subdomains__subdomain__activity_get: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path: {
+                subdomain: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityResponse"];
                 };
             };
             /** @description Validation Error */

@@ -246,7 +246,7 @@ class UserService:
         Returns:
             None. Raises Unauthorized on a wrong password.
         """
-        if not verify_password(user.password_hash, password):
+        if user.password_hash is None or not verify_password(user.password_hash, password):
             raise Unauthorized("Wrong password", code="wrong_password")
         user.totp_enabled = False
         user.totp_secret = None

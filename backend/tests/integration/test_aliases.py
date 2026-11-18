@@ -10,7 +10,6 @@ import pytest
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# local imports
 from mailalias.config import get_settings
 from mailalias.models import Alias, AliasState, User, UserRole
 from mailalias.services import kv_sync
@@ -18,9 +17,14 @@ from mailalias.services.aliases import AliasService
 from mailalias.services.users import UserService
 from tests.fakes import FakeKv
 
+# local imports
+from tests.integration.harness import sub
+
+BASE = sub("gina", "")  # this file's subdomain scope
+
 pytestmark = pytest.mark.usefixtures("relaxed_rate_limits")
 PASSWORD = "correct horse battery"
-API = "/api/v1/aliases"
+API = f"{BASE}/aliases"
 
 
 async def _user(session: AsyncSession, username: str, role: UserRole = UserRole.USER) -> User:
@@ -234,7 +238,7 @@ async def test_search_and_labels(client: httpx.AsyncClient) -> None:
     Returns:
         None.
     """
-    label = (await client.post("/api/v1/labels", json={"name": "shopping"})).json()
+    label = (await client.post(f"{BASE}/labels", json={"name": "shopping"})).json()
     tagged = await client.post(
         API, json={"local_part": "store1", "description": "Bike Shop", "label_ids": [label["id"]]}
     )
@@ -245,7 +249,7 @@ async def test_search_and_labels(client: httpx.AsyncClient) -> None:
     assert [a["local_part"] for a in found["items"]] == ["store1"]
     by_label = (await client.get(API, params={"label": label["id"]})).json()
     assert by_label["total"] == 1
-    duplicate = await client.post("/api/v1/labels", json={"name": "shopping"})
+    duplicate = await client.post(f"{BASE}/labels", json={"name": "shopping"})
     assert duplicate.status_code == 409
 
 
@@ -261,7 +265,7 @@ async def test_subdomain_toggle_marks_kv(
     Returns:
         None.
     """
-    response = await client.patch("/api/v1/me/settings", json={"subdomain_catchall": True})
+    response = await client.patch(f"{BASE}/settings", json={"subdomain_catchall": True})
     assert response.status_code == 200
     assert ("kv.sync_subdomain", str(gina.id)) in dispatched
 

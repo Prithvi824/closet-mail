@@ -21,11 +21,20 @@ from svix.webhooks import Webhook
 from mailalias.config import Settings, get_settings
 from mailalias.mail.outbound import FakeMailer
 from mailalias.mail.types import MailKind, Outcome
-from mailalias.models import DeliveryLog, DeliveryStatus, FailedDelivery, FailureKind, Recipient
+from mailalias.models import (
+    DeliveryLog,
+    DeliveryStatus,
+    FailedDelivery,
+    FailureKind,
+    Recipient,
+    UserRole,
+)
 from mailalias.security.crypto import lookup_hash
 from mailalias.services import mail_log
 from mailalias.services.users import UserService
-from tests.integration.harness import Harness, default_inbox, make_harness
+from tests.integration.harness import Harness, default_inbox, make_harness, sub
+
+BASE = sub("pia", "")  # this file's subdomain scope
 
 pytestmark = pytest.mark.usefixtures("dispatched", "relaxed_rate_limits")
 SECRET = "whsec_" + base64.b64encode(os.urandom(24)).decode()
@@ -186,8 +195,10 @@ async def test_missing_secret_is_503(client: httpx.AsyncClient) -> None:
 async def test_third_hard_bounce_disables_recipient_and_notifies(
     client: httpx.AsyncClient, session: AsyncSession, mailer: FakeMailer
 ) -> None:
-    """Hard bounces 1-2 only count; the 3rd disables and mails the user's other address."""
+    """Hard bounces 1-2 only count; the 3rd disables the inbox and tells the operator."""
     h = await make_harness(session)
+    h.user.role = UserRole.USER
+    await UserService(session).create_user("boss", "boss@example.com", "x" * 12, UserRole.ADMIN)
     backup = "pia.backup@example.com"
     session.add(
         Recipient(
@@ -207,7 +218,7 @@ async def test_third_hard_bounce_disables_recipient_and_notifies(
     await session.refresh(recipient)
     assert recipient.disabled_at is not None
     (notice,) = mailer.sent
-    assert notice.rcpt_to == [backup]
+    assert notice.rcpt_to == ["boss@example.com"]
     assert "disabled" in str(notice.message["Subject"])
 
 
@@ -242,7 +253,7 @@ async def test_failed_deliveries_api(client: httpx.AsyncClient, session: AsyncSe
     await _post(client, _event("email.complained", await _sent_forward(session, h), OWNER))
     login = await client.post("/api/v1/auth/login", json={"username": "pia", "password": "x" * 12})
     assert login.status_code == 200
-    (entry,) = (await client.get("/api/v1/failed-deliveries")).json()
+    (entry,) = (await client.get(f"{BASE}/failed-deliveries")).json()
     assert entry["kind"] == "complaint"
     assert (entry["recipient_email"], entry["alias_address"]) == (OWNER, h.alias.address)
 

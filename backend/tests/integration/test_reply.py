@@ -9,10 +9,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # local imports
 from mailalias.config import get_settings
 from mailalias.mail.types import InboundEnvelope, MailKind, Outcome
-from mailalias.models import Alias, Contact, DeliveryLog, UsageDaily
+from mailalias.models import Alias, Contact, DeliveryLog, UsageDaily, User, UserRole
 from mailalias.services.aliases import AliasService
 from mailalias.services.contacts import ContactService
-from tests.integration.harness import Harness, mail_logs, make_harness
+from mailalias.services.users import UserService
+from tests.integration.harness import Harness, mail_logs, make_harness, sub
+
+BASE = sub("pia", "")  # this file's subdomain scope
 
 pytestmark = pytest.mark.usefixtures("dispatched")
 OWNER = "pia@example.com"  # the harness user's verified default recipient
@@ -181,7 +184,7 @@ async def test_contacts_api(client: httpx.AsyncClient, session: AsyncSession) ->
     h = await make_harness(session)
     login = await client.post("/api/v1/auth/login", json={"username": "pia", "password": "x" * 12})
     assert login.status_code == 200
-    url = f"/api/v1/aliases/{h.alias.id}/contacts"
+    url = f"{BASE}/aliases/{h.alias.id}/contacts"
     created = await client.post(url, json={"email": "New.Person@Example.org"})
     assert created.status_code == 201
     body = created.json()
@@ -190,7 +193,7 @@ async def test_contacts_api(client: httpx.AsyncClient, session: AsyncSession) ->
     again = await client.post(url, json={"email": "new.person@example.org"})
     assert again.json()["id"] == body["id"]
     assert [c["id"] for c in (await client.get(url)).json()] == [body["id"]]
-    blocked = await client.patch(f"/api/v1/contacts/{body['id']}", json={"blocked": True})
+    blocked = await client.patch(f"{BASE}/contacts/{body['id']}", json={"blocked": True})
     assert blocked.json()["blocked"] is True
     own = await client.post(url, json={"email": "x@closetcompute.online"})
     assert own.status_code == 422
@@ -228,3 +231,44 @@ async def test_redelivered_reply_is_not_counted_twice(session: AsyncSession) -> 
     assert usage.replies == 1
     await session.refresh(bob)
     assert bob.replied_count == 1
+
+
+async def _served(session: AsyncSession, h: Harness) -> User:
+    """Make the harness subdomain one the operator serves, with operator "boss".
+
+    Args:
+        session: Test session.
+        h: Harness.
+    Returns:
+        The operator.
+    """
+    h.user.role = UserRole.USER
+    boss = await UserService(session).create_user(
+        "boss", "boss@example.com", "x" * 12, UserRole.ADMIN
+    )
+    await session.commit()
+    return boss
+
+
+async def test_rejected_reply_notice_also_reaches_the_person(session: AsyncSession) -> None:
+    """Replies off: the operator and the subdomain's inboxes both hear about it."""
+    h = await make_harness(session)
+    await _served(session, h)
+    bob = await _contact(session, h.alias, "bob@example.net", "Bob")
+    h.alias.reply_enabled = False
+    await session.commit()
+    _enqueue_reply(h, bob.token)
+    await h.processor.run_once()
+    assert sorted(m.rcpt_to[0] for m in h.notices.sent) == ["boss@example.com", OWNER]
+
+
+async def test_spoofed_reply_notice_goes_to_the_operator_only(session: AsyncSession) -> None:
+    """An unauthorised sender is reported to the operator, never to the person's inboxes."""
+    h = await make_harness(session)
+    await _served(session, h)
+    bob = await _contact(session, h.alias, "bob@example.net", "Bob")
+    _enqueue_reply(
+        h, bob.token, sender="mallory@evil.example", envelope_from="mallory@evil.example"
+    )
+    await h.processor.run_once()
+    assert [m.rcpt_to for m in h.notices.sent] == [["boss@example.com"]]

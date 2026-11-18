@@ -8,10 +8,11 @@ from typing import Annotated
 
 # 3rd party imports
 from fastapi import Depends, Request
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # local imports
-from mailalias.api.errors import Forbidden, Unauthorized
+from mailalias.api.errors import Conflict, Forbidden, NotFound, Unauthorized
 from mailalias.config import Settings, get_settings
 from mailalias.db import get_redis, get_session
 from mailalias.integrations.cloudflare_api import CloudflareApi
@@ -203,18 +204,49 @@ def token_scopes(read: str, write: str | None = None) -> Callable[..., Awaitable
 CurrentUser = Annotated[User, Depends(current_user)]
 
 
-async def require_admin(user: CurrentUser, principal: CurrentPrincipal) -> User:
-    """Restrict a route to admins signed in with a browser session (never an API token).
+async def require_operator(principal: CurrentPrincipal) -> User:
+    """Restrict a route to the operator signed in with a browser session (never an API token).
 
     Args:
-        user: Authenticated user.
         principal: Caller (rejected when it is a token).
     Returns:
-        The user if admin. Raises Forbidden otherwise.
+        The operator. Raises Forbidden otherwise.
     """
-    if principal.token is not None or user.role != UserRole.ADMIN:
-        raise Forbidden("Admin only")
-    return user
+    if principal.token is not None or principal.user.role != UserRole.ADMIN:
+        raise Forbidden("Operator only")
+    return principal.user
 
 
-AdminUser = Annotated[User, Depends(require_admin)]
+Operator = Annotated[User, Depends(require_operator)]
+
+
+async def current_subdomain(
+    subdomain: str, request: Request, db: DbSession, principal: CurrentPrincipal
+) -> User:
+    """The subdomain named in the path: any one for the operator, only its own for a token.
+
+    Args:
+        subdomain: Subdomain label from /subdomains/{subdomain}.
+        request, db, principal: Request (token scope flag, method), session, caller.
+    Returns:
+        The subdomain's users row. Raises NotFound, Forbidden, or Conflict (retired, writes).
+    """
+    label = subdomain.strip().lower()
+    if principal.token is not None:
+        if label != principal.user.username:
+            raise NotFound("Subdomain not found")
+        if not getattr(request.state, TOKEN_SCOPE_OK, False):
+            raise Forbidden("API tokens cannot use this endpoint", code="token_not_allowed")
+        found: User | None = principal.user
+    else:
+        if principal.user.role != UserRole.ADMIN:
+            raise Forbidden("Operator only")
+        found = await db.scalar(select(User).where(User.username == label))
+    if found is None:
+        raise NotFound("Subdomain not found")
+    if found.retired_at is not None and request.method not in SAFE_METHODS:
+        raise Conflict("This subdomain is retired", code="retired")
+    return found
+
+
+CurrentSubdomain = Annotated[User, Depends(current_subdomain)]

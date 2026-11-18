@@ -12,8 +12,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from mailalias.mail.outbound import FakeMailer
 from mailalias.models import UserRole
 from mailalias.services.users import UserService
-from tests.integration.harness import default_inbox
+from tests.integration.harness import default_inbox, sub
 from tests.pgp_keys import PgpTestKey, make_key
+
+BASE = sub("erin", "")  # this file's subdomain scope
 
 pytestmark = pytest.mark.usefixtures("relaxed_rate_limits")
 PASSWORD = "correct horse battery"
@@ -74,16 +76,16 @@ async def test_add_duplicate_and_verify(signed_in: httpx.AsyncClient, mailer: Fa
     Returns:
         None.
     """
-    created = await signed_in.post("/api/v1/recipients", json={"email": "Work@Example.org"})
+    created = await signed_in.post(f"{BASE}/recipients", json={"email": "Work@Example.org"})
     assert created.status_code == 201
     assert created.json()["verified"] is False
-    duplicate = await signed_in.post("/api/v1/recipients", json={"email": "work@example.org"})
+    duplicate = await signed_in.post(f"{BASE}/recipients", json={"email": "work@example.org"})
     assert duplicate.status_code == 409
 
     path = _verify_path(mailer)
     page = await signed_in.get(path)
     assert page.status_code == 200 and "<form" in page.text
-    listed = (await signed_in.get("/api/v1/recipients")).json()
+    listed = (await signed_in.get(f"{BASE}/recipients")).json()
     assert [r["verified"] for r in listed if r["email"] == "work@example.org"] == [False]
 
     # The confirmation form posts without the CSRF header, like a browser form would.
@@ -91,7 +93,7 @@ async def test_add_duplicate_and_verify(signed_in: httpx.AsyncClient, mailer: Fa
     assert confirmed.status_code == 200 and "confirmed" in confirmed.text
     again = await signed_in.post(path, headers={"X-Requested-With": ""})
     assert again.status_code == 404
-    listed = (await signed_in.get("/api/v1/recipients")).json()
+    listed = (await signed_in.get(f"{BASE}/recipients")).json()
     assert [r["verified"] for r in listed if r["email"] == "work@example.org"] == [True]
 
 
@@ -103,10 +105,10 @@ async def test_cannot_remove_last_verified_recipient(signed_in: httpx.AsyncClien
     Returns:
         None.
     """
-    only = (await signed_in.get("/api/v1/recipients")).json()[0]
+    only = (await signed_in.get(f"{BASE}/recipients")).json()[0]
     assert only["forward_by_default"] is True
-    assert (await signed_in.delete(f"/api/v1/recipients/{only['id']}")).status_code == 422
-    disable = await signed_in.patch(f"/api/v1/recipients/{only['id']}", json={"disabled": True})
+    assert (await signed_in.delete(f"{BASE}/recipients/{only['id']}")).status_code == 422
+    disable = await signed_in.patch(f"{BASE}/recipients/{only['id']}", json={"disabled": True})
     assert disable.status_code == 422
 
 
@@ -120,7 +122,7 @@ async def _add_verified(client: httpx.AsyncClient, mailer: FakeMailer, email: st
     Returns:
         The new recipient id.
     """
-    created = await client.post("/api/v1/recipients", json={"email": email})
+    created = await client.post(f"{BASE}/recipients", json={"email": email})
     assert created.status_code == 201
     await client.post(_verify_path(mailer), headers={"X-Requested-With": ""})
     return str(created.json()["id"])
@@ -137,25 +139,25 @@ async def test_default_flag_can_move_but_one_default_inbox_must_remain(
     Returns:
         None.
     """
-    first = (await signed_in.get("/api/v1/recipients")).json()[0]["id"]
+    first = (await signed_in.get(f"{BASE}/recipients")).json()[0]["id"]
     second = await _add_verified(signed_in, mailer, "erin.two@example.org")
     flagged = await signed_in.patch(
-        f"/api/v1/recipients/{second}", json={"forward_by_default": True}
+        f"{BASE}/recipients/{second}", json={"forward_by_default": True}
     )
     assert flagged.status_code == 200 and flagged.json()["forward_by_default"] is True
     unflag_first = await signed_in.patch(
-        f"/api/v1/recipients/{first}", json={"forward_by_default": False}
+        f"{BASE}/recipients/{first}", json={"forward_by_default": False}
     )
     assert unflag_first.status_code == 200
     for response in (
-        await signed_in.patch(f"/api/v1/recipients/{second}", json={"forward_by_default": False}),
-        await signed_in.patch(f"/api/v1/recipients/{second}", json={"disabled": True}),
-        await signed_in.delete(f"/api/v1/recipients/{second}"),
+        await signed_in.patch(f"{BASE}/recipients/{second}", json={"forward_by_default": False}),
+        await signed_in.patch(f"{BASE}/recipients/{second}", json={"disabled": True}),
+        await signed_in.delete(f"{BASE}/recipients/{second}"),
     ):
         assert response.status_code == 422
         assert response.json()["error"]["code"] == "last_default_inbox"
     listed = {
-        r["id"]: r["forward_by_default"] for r in (await signed_in.get("/api/v1/recipients")).json()
+        r["id"]: r["forward_by_default"] for r in (await signed_in.get(f"{BASE}/recipients")).json()
     }
     assert listed == {first: False, second: True}
 
@@ -174,7 +176,7 @@ async def test_other_users_recipients_are_hidden(
     other = await UserService(session).create_user("frank", "frank@example.com", PASSWORD)
     await session.commit()
     response = await signed_in.delete(
-        f"/api/v1/recipients/{(await default_inbox(session, other)).id}"
+        f"{BASE}/recipients/{(await default_inbox(session, other)).id}"
     )
     assert response.status_code == 404
 
@@ -197,9 +199,9 @@ async def test_unusable_pgp_keys_rejected(
         None.
     """
     armored = keys["good"].private if key_name == "private" else keys[key_name].public
-    recipient = (await signed_in.get("/api/v1/recipients")).json()[0]
+    recipient = (await signed_in.get(f"{BASE}/recipients")).json()[0]
     response = await signed_in.put(
-        f"/api/v1/recipients/{recipient['id']}/pgp", json={"public_key": armored}
+        f"{BASE}/recipients/{recipient['id']}/pgp", json={"public_key": armored}
     )
     assert response.status_code == 422
     assert message in response.json()["error"]["message"].lower()
@@ -213,9 +215,9 @@ async def test_garbage_pgp_key_rejected(signed_in: httpx.AsyncClient) -> None:
     Returns:
         None.
     """
-    recipient = (await signed_in.get("/api/v1/recipients")).json()[0]
+    recipient = (await signed_in.get(f"{BASE}/recipients")).json()[0]
     response = await signed_in.put(
-        f"/api/v1/recipients/{recipient['id']}/pgp", json={"public_key": "not a key"}
+        f"{BASE}/recipients/{recipient['id']}/pgp", json={"public_key": "not a key"}
     )
     assert response.status_code == 422
 
@@ -231,8 +233,8 @@ async def test_valid_pgp_key_set_and_cleared(
     Returns:
         None.
     """
-    recipient = (await signed_in.get("/api/v1/recipients")).json()[0]
-    url = f"/api/v1/recipients/{recipient['id']}/pgp"
+    recipient = (await signed_in.get(f"{BASE}/recipients")).json()[0]
+    url = f"{BASE}/recipients/{recipient['id']}/pgp"
     response = await signed_in.put(
         url, json={"public_key": keys["good"].public, "protect_subject": True}
     )
@@ -250,5 +252,5 @@ async def test_service_addresses_rejected_as_recipients(
     signed_in: httpx.AsyncClient, email: str
 ) -> None:
     """Our own domains cannot be recipients (mail would loop)."""
-    response = await signed_in.post("/api/v1/recipients", json={"email": email})
+    response = await signed_in.post(f"{BASE}/recipients", json={"email": email})
     assert response.status_code == 422

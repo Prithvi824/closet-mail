@@ -11,9 +11,13 @@ from fastapi import FastAPI
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# local imports
 from mailalias.models import ApiToken, UserRole
 from mailalias.services.users import UserService
+
+# local imports
+from tests.integration.harness import sub
+
+BASE = sub("pia", "")  # this file's subdomain scope
 
 pytestmark = pytest.mark.usefixtures("dispatched", "relaxed_rate_limits")
 PASSWORD = "token-password-1"
@@ -54,7 +58,7 @@ async def _issue(
     await session.commit()
     login = await client.post("/api/v1/auth/login", json={"username": "pia", "password": PASSWORD})
     assert login.status_code == 200
-    created = await client.post("/api/v1/tokens", json={"name": "script", "scopes": scopes})
+    created = await client.post(f"{BASE}/tokens", json={"name": "script", "scopes": scopes})
     assert created.status_code == 201
     return created.json()
 
@@ -76,7 +80,7 @@ async def test_secret_shown_once_and_listing_hides_it(
     """Creation returns ma_<prefix>_<secret>; the list never does."""
     created = await _issue(client, session, ["aliases:read"])
     assert created["token"].startswith(f"ma_{created['prefix']}_")
-    (listed,) = (await client.get("/api/v1/tokens")).json()
+    (listed,) = (await client.get(f"{BASE}/tokens")).json()
     assert "token" not in listed and listed["prefix"] == created["prefix"]
 
 
@@ -85,17 +89,17 @@ async def test_scopes_are_enforced_per_method(
 ) -> None:
     """Read scope reads; writes need the write scope; no CSRF header is needed with a token."""
     token = (await _issue(client, session, ["aliases:read", "recipients:read"]))["token"]
-    listed = await bare.get("/api/v1/aliases", headers=_auth(token))
+    listed = await bare.get(f"{BASE}/aliases", headers=_auth(token))
     assert listed.status_code == 200
     assert "X-RateLimit-Limit" in listed.headers
-    assert (await bare.get("/api/v1/labels", headers=_auth(token))).status_code == 200
-    denied = await bare.post("/api/v1/aliases", json={}, headers=_auth(token))
+    assert (await bare.get(f"{BASE}/labels", headers=_auth(token))).status_code == 200
+    denied = await bare.post(f"{BASE}/aliases", json={}, headers=_auth(token))
     assert denied.status_code == 403 and denied.json()["error"]["code"] == "scope"
-    recipients = await bare.get("/api/v1/recipients", headers=_auth(token))
+    recipients = await bare.get(f"{BASE}/recipients", headers=_auth(token))
     assert recipients.status_code == 200
     rid = recipients.json()[0]["id"]
     patched = await bare.patch(
-        f"/api/v1/recipients/{rid}", json={"disabled": True}, headers=_auth(token)
+        f"{BASE}/recipients/{rid}", json={"disabled": True}, headers=_auth(token)
     )
     assert patched.status_code == 403
 
@@ -106,32 +110,32 @@ async def test_write_scope_creates_alias_without_csrf(
     """aliases:write can create; contacts:write can start a conversation."""
     token = (await _issue(client, session, ["aliases:write", "contacts:write"]))["token"]
     created = await bare.post(
-        "/api/v1/aliases", json={"local_part": "scripted"}, headers=_auth(token)
+        f"{BASE}/aliases", json={"local_part": "scripted"}, headers=_auth(token)
     )
     assert created.status_code == 201
     contact = await bare.post(
-        f"/api/v1/aliases/{created.json()['id']}/contacts",
+        f"{BASE}/aliases/{created.json()['id']}/contacts",
         json={"email": "bob@example.net"},
         headers=_auth(token),
     )
     assert contact.status_code == 201
-    no_read = await bare.get("/api/v1/aliases", headers=_auth(token))
+    no_read = await bare.get(f"{BASE}/aliases", headers=_auth(token))
     assert no_read.status_code == 403
 
 
 async def test_session_only_endpoints_refuse_tokens(
     client: httpx.AsyncClient, bare: httpx.AsyncClient, session: AsyncSession
 ) -> None:
-    """Tokens cannot reach the profile, blocklist, token management or admin."""
+    """Tokens cannot reach the profile, blocklist, token management or operator routes."""
     scopes = ["aliases:read", "aliases:write", "recipients:read", "contacts:write"]
     token = (await _issue(client, session, scopes, UserRole.ADMIN))["token"]
     for method, url in (
         ("GET", "/api/v1/me"),
-        ("GET", "/api/v1/blocklist"),
-        ("GET", "/api/v1/tokens"),
-        ("POST", "/api/v1/tokens"),
-        ("GET", "/api/v1/admin/users"),
-        ("GET", "/api/v1/quarantine"),
+        ("GET", f"{BASE}/blocklist"),
+        ("GET", f"{BASE}/tokens"),
+        ("POST", f"{BASE}/tokens"),
+        ("GET", "/api/v1/operator/subdomains"),
+        ("GET", f"{BASE}/quarantine"),
     ):
         response = await bare.request(
             method, url, json={} if method == "POST" else None, headers=_auth(token)
@@ -145,7 +149,7 @@ async def test_expired_revoked_and_garbage_tokens(
     """Expired and revoked tokens and malformed values are 401; use is recorded."""
     created = await _issue(client, session, ["aliases:read"])
     token = created["token"]
-    assert (await bare.get("/api/v1/aliases", headers=_auth(token))).status_code == 200
+    assert (await bare.get(f"{BASE}/aliases", headers=_auth(token))).status_code == 200
     row = await session.get(ApiToken, created["id"])
     assert row is not None
     await session.refresh(row)
@@ -156,18 +160,18 @@ async def test_expired_revoked_and_garbage_tokens(
         .values(expires_at=datetime.now(UTC) - timedelta(seconds=1))
     )
     await session.commit()
-    expired = await bare.get("/api/v1/aliases", headers=_auth(token))
+    expired = await bare.get(f"{BASE}/aliases", headers=_auth(token))
     assert expired.status_code == 401 and expired.json()["error"]["code"] == "invalid_token"
     wrong_secret = token[:-4] + "zzzz"
-    assert (await bare.get("/api/v1/aliases", headers=_auth(wrong_secret))).status_code == 401
-    assert (await bare.get("/api/v1/aliases", headers=_auth("nonsense"))).status_code == 401
-    assert (await client.delete(f"/api/v1/tokens/{created['id']}")).status_code == 204
-    assert (await client.get("/api/v1/tokens")).json() == []
+    assert (await bare.get(f"{BASE}/aliases", headers=_auth(wrong_secret))).status_code == 401
+    assert (await bare.get(f"{BASE}/aliases", headers=_auth("nonsense"))).status_code == 401
+    assert (await client.delete(f"{BASE}/tokens/{created['id']}")).status_code == 204
+    assert (await client.get(f"{BASE}/tokens")).json() == []
 
 
 async def test_invalid_scopes_rejected(client: httpx.AsyncClient, session: AsyncSession) -> None:
     """Unknown scopes and empty scope lists are refused."""
     await _issue(client, session, ["aliases:read"])
-    bad = await client.post("/api/v1/tokens", json={"name": "x", "scopes": ["admin"]})
-    empty = await client.post("/api/v1/tokens", json={"name": "x", "scopes": []})
+    bad = await client.post(f"{BASE}/tokens", json={"name": "x", "scopes": ["admin"]})
+    empty = await client.post(f"{BASE}/tokens", json={"name": "x", "scopes": []})
     assert bad.status_code == 422 and empty.status_code == 422

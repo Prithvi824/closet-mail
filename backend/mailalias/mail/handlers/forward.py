@@ -35,7 +35,7 @@ from mailalias.services.aliases import AliasService
 from mailalias.services.blocklist import BlocklistService
 from mailalias.services.contacts import ContactService
 from mailalias.services.mail_log import DeliveryRecord
-from mailalias.services.notices import notify_owner
+from mailalias.services.notices import operator_addresses, send_notice
 from mailalias.services.quarantine import QuarantineService, subject_of
 from mailalias.services.quota import QuotaService, cap_retry_delay
 from mailalias.services.system_mail import SystemMailService
@@ -329,25 +329,59 @@ class ForwardHandler:
         )
 
     async def _notify_quota(self, owner: User) -> None:
-        """Tell the owner (at most once a day) that forwards are being dropped.
+        """Tell the operator (at most once a day per subdomain) that forwards are being dropped.
 
         Args:
-            owner: Alias owner.
+            owner: Alias owner (the subdomain).
         Returns:
             None.
         """
-        await notify_owner(
+        await send_notice(
             self.redis,
             self.system_mail,
-            owner,
+            await operator_addresses(self.db),
             throttle_key=f"quota:{owner.id}:{datetime.now(UTC):%Y%m%d}",
             ttl_seconds=QUOTA_NOTICE_TTL_SECONDS,
-            subject="Forwarding limit reached",
+            subject=f"Forwarding limit reached for {owner.username}",
             body=(
-                "Your hourly forwarding limit was reached, so some messages were not "
-                "forwarded. Forwarding resumes automatically next hour."
+                f"The hourly forwarding limit of {owner.username} was reached, so some "
+                "messages were not forwarded. Forwarding resumes automatically next hour."
             ),
         )
+
+    async def _notify_share(self, owner: User) -> None:
+        """Tell the operator (at most once a day per subdomain) that its send share is used up.
+
+        Args:
+            owner: Alias owner (the subdomain).
+        Returns:
+            None.
+        """
+        await send_notice(
+            self.redis,
+            self.system_mail,
+            await operator_addresses(self.db),
+            throttle_key=f"share:{owner.id}:{datetime.now(UTC):%Y%m%d}",
+            ttl_seconds=QUOTA_NOTICE_TTL_SECONDS,
+            subject=f"Daily send share used up for {owner.username}",
+            body=(
+                f"{owner.username} has used its daily share of sends. Its mail is queued and "
+                "will be delivered after midnight UTC, or sooner if you raise its share."
+            ),
+        )
+
+    async def _refund(self, owner_id: uuid.UUID, cost: int) -> None:
+        """Give back every quota a send consumed when it did not happen.
+
+        Args:
+            owner_id: Subdomain id.
+            cost: Sends to give back.
+        Returns:
+            None.
+        """
+        await self.quota.refund_global(cost)
+        await self.quota.refund_share(owner_id, cost)
+        await self.quota.refund_user(owner_id, "forward", cost)
 
     async def handle(
         self,
@@ -440,10 +474,16 @@ class ForwardHandler:
         cost = len(pending)
         if cost and not await self.quota.global_send_allowed(cost):
             raise RetryableError("global send cap reached", cap_retry_delay())
+        if cost and not await self.quota.check_share(owner.id, cost, owner.limits):
+            # Over its share the subdomain waits like the global cap, so others keep sending.
+            await self.quota.refund_global(cost)
+            await self._notify_share(owner)
+            raise RetryableError("subdomain send share reached", cap_retry_delay())
         if cost and not await self.quota.check_and_consume(
             owner.id, "forward", cost, limits=owner.limits
         ):
             await self.quota.refund_global(cost)
+            await self.quota.refund_share(owner.id, cost)
             await self._notify_quota(owner)
             return await self._log(
                 Outcome.DISCARDED,
@@ -471,8 +511,7 @@ class ForwardHandler:
                 # A broken key or unparseable part fails the same way on every retry, so skip this
                 # recipient (never fall back to plaintext) and keep going with the others.
                 logger.exception("forward build failed", extra={"recipient_id": str(recipient.id)})
-                await self.quota.refund_global(1)
-                await self.quota.refund_user(owner.id, "forward", 1)
+                await self._refund(owner.id, 1)
                 continue
             if delivery.spam_unchecked:
                 message[NOTICE_HEADER] = "spam-check-unavailable"
@@ -481,15 +520,12 @@ class ForwardHandler:
                     message, f"{contact.token}@{self.settings.reply_domain}", [recipient.email]
                 )
             except RetryableError:
-                unsent = cost - index
-                await self.quota.refund_global(unsent)
-                await self.quota.refund_user(owner.id, "forward", unsent)
+                await self._refund(owner.id, cost - index)
                 raise
             except PermanentSendError:
                 # The provider's error text may contain addresses, so only ids are logged.
                 logger.warning("forward rejected", extra={"recipient_id": str(recipient.id)})
-                await self.quota.refund_global(1)
-                await self.quota.refund_user(owner.id, "forward", 1)
+                await self._refund(owner.id, 1)
                 continue
             records.append(DeliveryRecord(recipient.id, sent))
             delivered += 1

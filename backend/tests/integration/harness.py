@@ -270,3 +270,15 @@ async def default_inbox(session: AsyncSession, user: User) -> Recipient:
     recipient = (await session.scalars(query)).first()
     assert recipient is not None
     return recipient
+
+
+def sub(label: str, path: str) -> str:
+    """API path inside one subdomain's scope.
+
+    Args:
+        label: Subdomain label (username).
+        path: Path under the scope, e.g. "/aliases".
+    Returns:
+        "/api/v1/subdomains/<label><path>".
+    """
+    return f"/api/v1/subdomains/{label}{path}"

@@ -13,7 +13,7 @@ export const adminKeys = {
 export function useHealth() {
   return useQuery({
     queryKey: adminKeys.health,
-    queryFn: async () => (await http.get<Health>("/admin/health")).data,
+    queryFn: async () => (await http.get<Health>("/operator/health")).data,
     refetchInterval: HEALTH_REFRESH_MS,
   });
 }
@@ -22,7 +22,7 @@ export function useHealth() {
 export function useDlq(enabled: boolean) {
   return useQuery({
     queryKey: adminKeys.dlq,
-    queryFn: async () => (await http.get<DlqItem[]>("/admin/dlq")).data,
+    queryFn: async () => (await http.get<DlqItem[]>("/operator/dlq")).data,
     enabled,
     staleTime: 0,
   });
@@ -32,7 +32,7 @@ export function useRetryDlq() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (r2Keys: string[] | null) =>
-      (await http.post<{ moved: number }>("/admin/dlq/retry", { r2_keys: r2Keys })).data,
+      (await http.post<{ moved: number }>("/operator/dlq/retry", { r2_keys: r2Keys })).data,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: adminKeys.health });
       queryClient.removeQueries({ queryKey: adminKeys.dlq });

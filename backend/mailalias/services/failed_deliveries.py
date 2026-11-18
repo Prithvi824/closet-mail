@@ -22,9 +22,9 @@ from mailalias.models import (
     MailLog,
     Recipient,
     User,
-    UserRole,
 )
 from mailalias.security.crypto import lookup_hash
+from mailalias.services.notices import operator_addresses
 from mailalias.services.system_mail import SystemMailService
 
 logger = logging.getLogger(__name__)
@@ -314,31 +314,24 @@ class FailedDeliveryService:
         await self._notify_disabled(recipient)
 
     async def _notify_disabled(self, recipient: Recipient) -> None:
-        """Tell the user (other usable recipients, else the admins) that forwarding stopped.
+        """Tell the operator that forwarding to an inbox stopped (never the inbox itself).
 
         Args:
-            recipient: The recipient just disabled (never mailed itself).
+            recipient: The recipient just disabled.
         Returns:
             None.
         """
-        others = await self.db.scalars(
-            select(Recipient).where(
-                Recipient.user_id == recipient.user_id, Recipient.id != recipient.id
-            )
-        )
-        targets = [r.email for r in others if r.is_usable]
-        if not targets:
-            admins = await self.db.scalars(select(User).where(User.role == UserRole.ADMIN))
-            targets = [admin.email for admin in admins if admin.disabled_at is None]
-        for address in dict.fromkeys(targets):
+        owner = await self.db.get(User, recipient.user_id)
+        label = owner.username if owner else "a subdomain"
+        for address in await operator_addresses(self.db):
             await self.system_mail.send(
                 "notice",
                 address,
-                subject="A forwarding address was disabled",
+                subject=f"An inbox of {label} was disabled",
                 body=(
                     f"Mail to {recipient.email} bounced {HARD_BOUNCE_LIMIT} times in a row, so "
-                    "forwarding to it has been turned off. Fix the mailbox, then re-enable it "
-                    "from the Recipients page."
+                    f"forwarding to it has been turned off for {label}. Fix the mailbox, then "
+                    "re-enable it from that subdomain's Inboxes page."
                 ),
             )
 

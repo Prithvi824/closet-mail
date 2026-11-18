@@ -15,7 +15,7 @@ from mailalias.config import Settings
 from mailalias.integrations.cloudflare_queue import CloudflareQueueAdmin
 from mailalias.mail.types import MailKind, Outcome
 from mailalias.models import FailedDelivery, FailureKind, MailLog, User, UserRole
-from mailalias.services.admin import AdminService
+from mailalias.services.operator import OperatorService
 from mailalias.services.system_mail import SystemMailService
 
 logger = logging.getLogger(__name__)
@@ -74,7 +74,7 @@ async def collect_alerts(
     Returns:
         Current alerts (may be empty).
     """
-    health = await AdminService(db, settings, redis).health(queues)
+    health = await OperatorService(db, settings, redis).health(queues)
     alerts: list[Alert] = []
     age = health.heartbeat_age_seconds
     if age is None or age > HEARTBEAT_STALE_SECONDS:
@@ -136,14 +136,16 @@ async def send_alerts(
     admins = [
         admin
         for admin in await db.scalars(select(User).where(User.role == UserRole.ADMIN))
-        if admin.disabled_at is None
+        if admin.disabled_at is None and admin.email is not None
     ]
     sent = 0
     for alert in alerts:
         if not await redis.set(f"alert:{alert.key}", "1", nx=True, ex=ALERT_DEDUP_SECONDS):
             continue
         for admin in admins:
-            await system_mail.send("notice", admin.email, subject=alert.subject, body=alert.body)
+            await system_mail.send(
+                "notice", str(admin.email), subject=alert.subject, body=alert.body
+            )
         logger.warning("alert sent", extra={"alert": alert.key, "admins": len(admins)})
         sent += 1
     return sent

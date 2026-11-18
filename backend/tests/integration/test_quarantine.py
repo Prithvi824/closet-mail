@@ -25,7 +25,9 @@ from mailalias.security.crypto import decrypt_bytes
 from mailalias.services.quarantine import RELEASE_TASK, QuarantineService
 from mailalias.services.system_mail import SystemMailService
 from tests.eml import EML_DIR
-from tests.integration.harness import Harness, mail_logs, make_harness
+from tests.integration.harness import Harness, mail_logs, make_harness, sub
+
+BASE = sub("pia", "")  # this file's subdomain scope
 
 pytestmark = pytest.mark.usefixtures("dispatched")
 GTUBE = "XJS*C4JBQADN1.NSBN3*2IDNEN*GTUBE-STANDARD-ANTI-UBE-TEST-EMAIL*C.34X"
@@ -180,15 +182,15 @@ async def test_quarantine_api(
     await h.processor.run_once()
     login = await client.post("/api/v1/auth/login", json={"username": "pia", "password": "x" * 12})
     assert login.status_code == 200
-    listed = (await client.get("/api/v1/quarantine")).json()
+    listed = (await client.get(f"{BASE}/quarantine")).json()
     assert len(listed) == 2 and listed[0]["alias_address"] == h.alias.address
     first, second = listed[0]["id"], listed[1]["id"]
-    released = await client.post(f"/api/v1/quarantine/{first}/release")
+    released = await client.post(f"{BASE}/quarantine/{first}/release")
     assert released.status_code == 202
     assert (RELEASE_TASK, first) in dispatched
-    assert (await client.delete(f"/api/v1/quarantine/{second}")).status_code == 204
+    assert (await client.delete(f"{BASE}/quarantine/{second}")).status_code == 204
     assert len(h.store.objects) == 1
-    missing = await client.post(f"/api/v1/quarantine/{second}/release")
+    missing = await client.post(f"{BASE}/quarantine/{second}/release")
     assert missing.status_code == 404
 
 

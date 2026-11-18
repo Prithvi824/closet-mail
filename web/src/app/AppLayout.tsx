@@ -12,15 +12,16 @@ import { useSession } from "@/features/auth/useSession";
 /** Signed-in shell: sidebar (sheet on small screens), header and the page outlet. */
 export function AppLayout() {
   const [menuOpen, setMenuOpen] = useState(false);
-  const { user, isAdmin } = useSession();
+  const { user } = useSession();
+  const operatorLabel = user?.username ?? "";
 
   return (
     <div className="flex min-h-svh">
       <aside className="hidden w-60 shrink-0 border-r bg-sidebar md:block">
-        <Link to="/aliases" className="flex h-14 items-center border-b px-6 text-sm font-semibold">
+        <Link to="/overview" className="flex h-14 items-center border-b px-6 text-sm font-semibold">
           closetcompute
         </Link>
-        <Sidebar isAdmin={isAdmin} />
+        <Sidebar operatorLabel={operatorLabel} />
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-14 items-center gap-2 border-b px-4">
@@ -32,7 +33,7 @@ export function AppLayout() {
             </SheetTrigger>
             <SheetContent side="left" className="w-64 p-0">
               <SheetTitle className="flex h-14 items-center border-b px-6 text-sm">closetcompute</SheetTitle>
-              <Sidebar isAdmin={isAdmin} onNavigate={() => setMenuOpen(false)} />
+              <Sidebar operatorLabel={operatorLabel} onNavigate={() => setMenuOpen(false)} />
             </SheetContent>
           </Sheet>
           <div className="flex-1" />

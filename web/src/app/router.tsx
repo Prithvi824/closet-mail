@@ -15,47 +15,60 @@ export const router = createBrowserRouter([
       {
         element: <AppLayout />,
         children: [
-          { index: true, element: <Navigate to="/aliases" replace /> },
+          { index: true, element: <Navigate to="/overview" replace /> },
           {
-            path: "/aliases",
-            lazy: async () => ({ Component: (await import("@/pages/aliases/AliasesPage")).AliasesPage }),
+            path: "/overview",
+            lazy: async () => ({ Component: (await import("@/pages/overview/OverviewPage")).OverviewPage }),
           },
           {
-            path: "/recipients",
-            lazy: async () => ({ Component: (await import("@/pages/recipients/RecipientsPage")).RecipientsPage }),
+            path: "/subdomains",
+            lazy: async () => ({ Component: (await import("@/pages/subdomains/SubdomainsPage")).SubdomainsPage }),
           },
           {
-            path: "/quarantine",
-            lazy: async () => ({ Component: (await import("@/pages/quarantine/QuarantinePage")).QuarantinePage }),
+            path: "/health",
+            lazy: async () => ({ Component: (await import("@/pages/admin/HealthPage")).HealthPage }),
           },
           {
-            path: "/failed",
-            lazy: async () => ({
-              Component: (await import("@/pages/failed/FailedDeliveriesPage")).FailedDeliveriesPage,
-            }),
+            path: "/account",
+            lazy: async () => ({ Component: (await import("@/pages/account/AccountPage")).AccountPage }),
           },
           {
-            path: "/activity",
-            lazy: async () => ({ Component: (await import("@/pages/activity/ActivityPage")).ActivityPage }),
-          },
-          {
-            path: "/blocklist",
-            lazy: async () => ({ Component: (await import("@/pages/blocklist/BlocklistPage")).BlocklistPage }),
-          },
-          {
-            path: "/tokens",
-            lazy: async () => ({ Component: (await import("@/pages/tokens/TokensPage")).TokensPage }),
-          },
-          {
-            path: "/settings",
-            lazy: async () => ({ Component: (await import("@/pages/settings/SettingsPage")).SettingsPage }),
-          },
-          {
-            element: <RequireAuth admin />,
+            path: "/s/:label",
             children: [
+              { index: true, element: <Navigate to="aliases" replace /> },
               {
-                path: "/admin/health",
-                lazy: async () => ({ Component: (await import("@/pages/admin/HealthPage")).HealthPage }),
+                path: "aliases",
+                lazy: async () => ({ Component: (await import("@/pages/aliases/AliasesPage")).AliasesPage }),
+              },
+              {
+                path: "inboxes",
+                lazy: async () => ({ Component: (await import("@/pages/recipients/RecipientsPage")).RecipientsPage }),
+              },
+              {
+                path: "quarantine",
+                lazy: async () => ({ Component: (await import("@/pages/quarantine/QuarantinePage")).QuarantinePage }),
+              },
+              {
+                path: "failed",
+                lazy: async () => ({
+                  Component: (await import("@/pages/failed/FailedDeliveriesPage")).FailedDeliveriesPage,
+                }),
+              },
+              {
+                path: "activity",
+                lazy: async () => ({ Component: (await import("@/pages/activity/ActivityPage")).ActivityPage }),
+              },
+              {
+                path: "blocklist",
+                lazy: async () => ({ Component: (await import("@/pages/blocklist/BlocklistPage")).BlocklistPage }),
+              },
+              {
+                path: "tokens",
+                lazy: async () => ({ Component: (await import("@/pages/tokens/TokensPage")).TokensPage }),
+              },
+              {
+                path: "settings",
+                lazy: async () => ({ Component: (await import("@/pages/settings/SettingsPage")).SettingsPage }),
               },
             ],
           },

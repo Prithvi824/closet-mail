@@ -72,6 +72,8 @@ class Settings(BaseSettings):
     user_replies_per_day: int = 50
     user_forwards_per_hour: int = 500
     user_alias_creates_per_hour: int = 20
+    # Each subdomain's share of the daily send cap (forwards + replies), unless overridden.
+    subdomain_sends_per_day: int = 40
 
     # --- processor
     processor_batch: int = 10

@@ -14,6 +14,7 @@ from mailalias.models.label import Label, alias_labels
 from mailalias.models.mail_log import MailLog
 from mailalias.models.quarantine import QuarantineItem
 from mailalias.models.recipient import Recipient
+from mailalias.models.subdomain_status import SubdomainState, SubdomainStatus
 from mailalias.models.usage import UsageDaily
 from mailalias.models.user import AliasFormat, BannerPosition, User, UserRole
 from mailalias.models.webauthn import WebAuthnCredential
@@ -39,6 +40,8 @@ __all__ = [
     "MailLog",
     "QuarantineItem",
     "Recipient",
+    "SubdomainState",
+    "SubdomainStatus",
     "UsageDaily",
     "User",
     "UserRole",

@@ -7,7 +7,7 @@ import uuid
 from fastapi import APIRouter, Depends, status
 
 # local imports
-from mailalias.api.deps import AppSettings, CurrentUser, DbSession, token_scopes
+from mailalias.api.deps import AppSettings, CurrentSubdomain, DbSession, token_scopes
 from mailalias.api.errors import ValidationFailed
 from mailalias.mail.addresses import is_service_domain, split_address
 from mailalias.schemas.contacts import ContactCreate, ContactResponse, ContactUpdate
@@ -21,7 +21,7 @@ router = APIRouter(
 
 @router.get("/aliases/{alias_id}/contacts")
 async def list_contacts(
-    alias_id: uuid.UUID, user: CurrentUser, db: DbSession, settings: AppSettings
+    alias_id: uuid.UUID, user: CurrentSubdomain, db: DbSession, settings: AppSettings
 ) -> list[ContactResponse]:
     """List an alias's contacts.
 
@@ -42,7 +42,7 @@ async def list_contacts(
 async def create_contact(
     alias_id: uuid.UUID,
     body: ContactCreate,
-    user: CurrentUser,
+    user: CurrentSubdomain,
     db: DbSession,
     settings: AppSettings,
 ) -> ContactResponse:
@@ -71,7 +71,7 @@ async def create_contact(
 async def update_contact(
     contact_id: uuid.UUID,
     body: ContactUpdate,
-    user: CurrentUser,
+    user: CurrentSubdomain,
     db: DbSession,
     settings: AppSettings,
 ) -> ContactResponse:

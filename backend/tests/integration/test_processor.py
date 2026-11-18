@@ -24,10 +24,13 @@ from mailalias.models import (
     FailureKind,
     Recipient,
     UsageDaily,
+    User,
+    UserRole,
 )
 from mailalias.security.crypto import lookup_hash
 from mailalias.services.contacts import ContactService
-from mailalias.services.quota import global_key
+from mailalias.services.quota import global_key, share_key
+from mailalias.services.users import UserService
 from tests.eml import envelope
 from tests.integration.harness import (
     FlakyMailer,
@@ -134,7 +137,7 @@ async def test_user_quota_discards_and_notifies_once(session: AsyncSession) -> N
     assert len(h.mailer.sent) == 1
     assert [log.reason for log in await mail_logs(session, h)].count("quota") == 2
     assert len(h.notices.sent) == 1
-    assert h.notices.sent[0].message["Subject"] == "Forwarding limit reached"
+    assert h.notices.sent[0].message["Subject"] == "Forwarding limit reached for pia"
 
 
 async def test_catchall_subdomain_creates_alias(session: AsyncSession) -> None:
@@ -352,3 +355,67 @@ async def test_catchall_alias_reaches_every_default_inbox(session: AsyncSession)
     h.enqueue("fwd_alternative.eml", rcpt_to="new@pia.closetcompute.online")
     await h.processor.run_once()
     assert sorted(m.rcpt_to[0] for m in h.mailer.sent) == ["pia2@example.org", "pia@example.com"]
+
+
+async def _served(session: AsyncSession, h: Harness) -> User:
+    """Make the harness subdomain one the operator serves, with operator "boss".
+
+    Args:
+        session: Test session.
+        h: Harness.
+    Returns:
+        The operator.
+    """
+    h.user.role = UserRole.USER
+    boss = await UserService(session).create_user(
+        "boss", "boss@example.com", "x" * 12, UserRole.ADMIN
+    )
+    await session.commit()
+    return boss
+
+
+async def test_forward_quota_notice_goes_to_the_operator(session: AsyncSession) -> None:
+    """The hourly forward limit is the operator's business, not the person's."""
+    h = await make_harness(session)
+    await _served(session, h)
+    h.user.limits = {"forwards_per_hour": 1}
+    await session.commit()
+    for _ in range(2):
+        h.enqueue("fwd_alternative.eml")
+    await h.processor.run_once()
+    assert [m.rcpt_to for m in h.notices.sent] == [["boss@example.com"]]
+
+
+async def test_send_share_used_up_retries_instead_of_sending(session: AsyncSession) -> None:
+    """Two default inboxes with a share of one send: nothing goes out, the mail waits."""
+    h = await make_harness(session)
+    await _served(session, h)
+    second = await _second_inbox(session, h)
+    second.forward_by_default = True
+    h.user.limits = {"sends_per_day": 1}
+    await session.commit()
+    lease = h.enqueue("fwd_alternative.eml")
+    await h.processor.run_once()
+    assert h.mailer.sent == [] and h.inbox.acked == []
+    assert [lease_id for lease_id, _ in h.inbox.retried] == [lease]
+    assert int(await get_redis().get(global_key()) or 0) == 0
+    assert int(await get_redis().get(share_key(h.user.id)) or 0) == 0
+    (notice,) = h.notices.sent
+    assert notice.rcpt_to == ["boss@example.com"]
+    assert "pia" in str(notice.message["Subject"])
+
+
+async def test_send_share_is_refunded_when_a_send_fails(session: AsyncSession) -> None:
+    """A rejected send gives its unit back to the subdomain's share."""
+    h = await make_harness(session, FlakyMailer(PermanentSendError("550")))
+    h.enqueue("fwd_alternative.eml")
+    await h.processor.run_once()
+    assert int(await get_redis().get(share_key(h.user.id)) or 0) == 0
+
+
+async def test_send_share_is_spent_by_delivered_mail(session: AsyncSession) -> None:
+    """Each delivered copy counts once against the subdomain's share."""
+    h = await make_harness(session)
+    h.enqueue("fwd_alternative.eml")
+    await h.processor.run_once()
+    assert int(await get_redis().get(share_key(h.user.id)) or 0) == 1

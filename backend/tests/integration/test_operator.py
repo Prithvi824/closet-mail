@@ -1,4 +1,4 @@
-"""Admin console API: access control, user management, health and DLQ recovery."""
+"""Operator console API: access control, health and DLQ recovery."""
 
 # 1st party imports
 import json
@@ -95,36 +95,18 @@ async def _login(client: httpx.AsyncClient, username: str) -> None:
 async def test_non_operator_session_is_refused(
     client: httpx.AsyncClient, session: AsyncSession
 ) -> None:
-    """Every admin endpoint refuses a non-operator, even with a session from before."""
+    """Every operator endpoint refuses a non-operator, even with a session from before."""
     _, user = await _users(session)
     sid = await SessionStore(get_redis()).create(user.id, mfa_passed=True)
     client.cookies.set(SESSION_COOKIE, sid)
     for method, url in (
-        ("GET", "/api/v1/admin/users"),
-        ("GET", "/api/v1/admin/health"),
-        ("GET", "/api/v1/admin/dlq"),
-        ("POST", "/api/v1/admin/dlq/retry"),
+        ("GET", "/api/v1/operator/subdomains"),
+        ("GET", "/api/v1/operator/health"),
+        ("GET", "/api/v1/operator/dlq"),
+        ("POST", "/api/v1/operator/dlq/retry"),
     ):
         response = await client.request(method, url, json={} if method == "POST" else None)
         assert response.status_code == 401, url
-
-
-async def test_user_management(client: httpx.AsyncClient, session: AsyncSession) -> None:
-    """List, disable (ending sessions), limits override/reset, and no self-lockout."""
-    admin, user = await _users(session)
-    sid = await SessionStore(get_redis()).create(user.id, mfa_passed=True)
-    await _login(client, "boss")
-    listed = {u["username"]: u for u in (await client.get("/api/v1/admin/users")).json()}
-    assert set(listed) == {"boss", "pia"} and listed["pia"]["alias_count"] == 0
-    url = f"/api/v1/admin/users/{user.id}"
-    disabled = await client.patch(url, json={"disabled": True, "limits": {"replies_per_day": 5}})
-    assert disabled.json()["disabled"] is True
-    assert disabled.json()["limits"] == {"replies_per_day": 5}
-    assert await SessionStore(get_redis()).get(sid) is None
-    assert (await client.patch(url, json={"limits": {"bogus": 1}})).status_code == 422
-    assert (await client.patch(url, json={"limits": None})).json()["limits"] is None
-    own = f"/api/v1/admin/users/{admin.id}"
-    assert (await client.patch(own, json={"disabled": True})).status_code == 422
 
 
 async def test_health_numbers(
@@ -145,14 +127,14 @@ async def test_health_numbers(
     await failed.record(FailureKind.COMPLAINT, user_id=user.id)
     await session.commit()
     await _login(client, "boss")
-    body = (await client.get("/api/v1/admin/health")).json()
+    body = (await client.get("/api/v1/operator/health")).json()
     assert 0 <= body["heartbeat_age_seconds"] < 60
     assert (body["inbound_backlog"], body["dlq_backlog"]) == (3, 1)
     assert (body["sends_today"], body["send_cap"]) == (12, settings.outbound_daily_cap)
     assert (body["hard_bounces_7d"], body["complaints_7d"]) == (1, 1)
     assert body["kv_reconcile"]["missing"] == 0
     queues.down = True
-    degraded = (await client.get("/api/v1/admin/health")).json()
+    degraded = (await client.get("/api/v1/operator/health")).json()
     assert degraded["inbound_backlog"] is None and degraded["dlq_backlog"] is None
 
 
@@ -166,7 +148,7 @@ async def test_dlq_list_and_selective_retry(
         {"lease_id": "l2", "attempts": 6, "body": json.dumps(_job("in/b.eml"))},
     ]
     await _login(client, "boss")
-    listed = (await client.get("/api/v1/admin/dlq")).json()
+    listed = (await client.get("/api/v1/operator/dlq")).json()
     assert [item["r2_key"] for item in listed] == ["in/a.eml", "in/b.eml"]
     assert set(listed[0]) == {
         "lease_id",
@@ -176,7 +158,7 @@ async def test_dlq_list_and_selective_retry(
         "received_at",
         "attempts",
     }
-    moved = await client.post("/api/v1/admin/dlq/retry", json={"r2_keys": ["in/b.eml"]})
+    moved = await client.post("/api/v1/operator/dlq/retry", json={"r2_keys": ["in/b.eml"]})
     assert moved.json() == {"moved": 1}
     assert queues.sent == [(get_settings().cf_queue_id_inbound, _job("in/b.eml"))]
     assert queues.acked == ["l2"]

@@ -1,20 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { ME_KEY } from "@/features/auth/api";
-import type { Me, SettingsUpdate } from "@/lib/api";
 import { http } from "@/lib/http";
-
-export function useUpdateSettings() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (changes: SettingsUpdate) => (await http.patch<Me>("/me/settings", changes)).data,
-    onSuccess: (me) => {
-      queryClient.setQueryData(ME_KEY, me);
-      // The default recipient is shown on the recipients list too.
-      return queryClient.invalidateQueries({ queryKey: ["recipients"] });
-    },
-  });
-}
 
 export function useTotpSetup() {
   return useMutation({

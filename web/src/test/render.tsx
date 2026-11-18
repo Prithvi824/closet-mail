@@ -22,6 +22,11 @@ export function renderPage(element: ReactElement, path = "/") {
   return renderRoutes([{ path: "*", element }], path);
 }
 
+/** Render an element inside a subdomain route, e.g. /s/pia/aliases (useSubdomainLabel works). */
+export function renderScoped(element: ReactElement, label = "pia", section = "page") {
+  return renderRoutes([{ path: "/s/:label/*", element }], `/s/${label}/${section}`);
+}
+
 /** An axios-like error carrying an API error body. */
 export function apiError(status: number, message: string) {
   return Object.assign(new Error(message), {

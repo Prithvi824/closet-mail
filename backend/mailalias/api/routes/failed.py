@@ -4,7 +4,7 @@
 from fastapi import APIRouter
 
 # local imports
-from mailalias.api.deps import CurrentUser, DbSession, SystemMail
+from mailalias.api.deps import CurrentSubdomain, DbSession, SystemMail
 from mailalias.schemas.failed import FailedDeliveryResponse
 from mailalias.services.failed_deliveries import FailedDeliveryService
 
@@ -13,7 +13,7 @@ router = APIRouter(prefix="/failed-deliveries", tags=["failed-deliveries"])
 
 @router.get("")
 async def list_failed(
-    user: CurrentUser, db: DbSession, system_mail: SystemMail
+    user: CurrentSubdomain, db: DbSession, system_mail: SystemMail
 ) -> list[FailedDeliveryResponse]:
     """List recent delivery problems.
 
