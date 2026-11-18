@@ -229,86 +229,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/auth/invite/accept": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Accept Invite
-         * @description Create an account from an invite.
-         *
-         *     Args:
-         *         body: Token and chosen credentials.
-         *         db: Database session.
-         *     Returns:
-         *         {"username": ...}; the user then signs in normally.
-         */
-        post: operations["accept_invite_api_v1_auth_invite_accept_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/password-reset/request": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Request Password Reset
-         * @description Send a reset link if the email belongs to an account; same response either way.
-         *
-         *     Args:
-         *         body: Account email.
-         *         db: Database session.
-         *         mail: System mail service.
-         *     Returns:
-         *         A generic acknowledgement.
-         */
-        post: operations["request_password_reset_api_v1_auth_password_reset_request_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/password-reset/confirm": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Confirm Password Reset
-         * @description Set a new password and sign out every session of that user.
-         *
-         *     Args:
-         *         body: Token and new password.
-         *         db: Database session.
-         *         sessions: Session store.
-         *     Returns:
-         *         None (204).
-         */
-        post: operations["confirm_password_reset_api_v1_auth_password_reset_confirm_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/me": {
         parameters: {
             query?: never;
@@ -1291,44 +1211,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/invites": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Invites
-         * @description List all invites.
-         *
-         *     Args:
-         *         admin: Admin user.
-         *         db: Database session.
-         *     Returns:
-         *         Invites, newest first.
-         */
-        get: operations["list_invites_api_v1_admin_invites_get"];
-        put?: never;
-        /**
-         * Create Invite
-         * @description Invite an email address; the link is emailed to it.
-         *
-         *     Args:
-         *         body: Invitee email.
-         *         admin: Admin user.
-         *         db: Database session.
-         *         mail: System mail service.
-         *     Returns:
-         *         The created invite.
-         */
-        post: operations["create_invite_api_v1_admin_invites_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/admin/users": {
         parameters: {
             query?: never;
@@ -1369,7 +1251,7 @@ export interface paths {
         head?: never;
         /**
          * Update User
-         * @description Disable/enable a user, change their role or override their limits.
+         * @description Disable/enable a user or override their limits.
          *
          *     Args:
          *         user_id: Target user.
@@ -1509,7 +1391,6 @@ export interface components {
         AdminUserUpdate: {
             /** Disabled */
             disabled?: boolean | null;
-            role?: components["schemas"]["UserRole"] | null;
             /** Limits */
             limits?: {
                 [key: string]: number;
@@ -1848,54 +1729,6 @@ export interface components {
             } | null;
         };
         /**
-         * InviteAcceptRequest
-         * @description Redeem an invite.
-         */
-        InviteAcceptRequest: {
-            /** Token */
-            token: string;
-            /** Username */
-            username: string;
-            /** Password */
-            password: string;
-        };
-        /**
-         * InviteCreate
-         * @description Admin: invite an email address.
-         */
-        InviteCreate: {
-            /**
-             * Email
-             * Format: email
-             */
-            email: string;
-        };
-        /**
-         * InviteResponse
-         * @description Admin view of an invite (email shown; it is the admin's own data).
-         */
-        InviteResponse: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /** Email */
-            email: string;
-            /**
-             * Expires At
-             * Format: date-time
-             */
-            expires_at: string;
-            /** Used At */
-            used_at: string | null;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-        };
-        /**
          * LabelCreate
          * @description New label.
          */
@@ -2050,27 +1883,6 @@ export interface components {
         PasswordConfirm: {
             /** Password */
             password: string;
-        };
-        /**
-         * PasswordResetConfirm
-         * @description Set a new password with a reset token.
-         */
-        PasswordResetConfirm: {
-            /** Token */
-            token: string;
-            /** Password */
-            password: string;
-        };
-        /**
-         * PasswordResetRequest
-         * @description Ask for a reset link.
-         */
-        PasswordResetRequest: {
-            /**
-             * Email
-             * Format: email
-             */
-            email: string;
         };
         /**
          * PgpKeyUpdate
@@ -2566,107 +2378,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-        };
-    };
-    accept_invite_api_v1_auth_invite_accept_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["InviteAcceptRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    request_password_reset_api_v1_auth_password_reset_request_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PasswordResetRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    confirm_password_reset_api_v1_auth_password_reset_confirm_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PasswordResetConfirm"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
             };
         };
     };
@@ -3917,59 +3628,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_invites_api_v1_admin_invites_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["InviteResponse"][];
-                };
-            };
-        };
-    };
-    create_invite_api_v1_admin_invites_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["InviteCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["InviteResponse"];
-                };
             };
             /** @description Validation Error */
             422: {

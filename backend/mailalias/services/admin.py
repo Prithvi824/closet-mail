@@ -21,7 +21,7 @@ from mailalias.config import Settings
 from mailalias.integrations.cloudflare_queue import CloudflareQueueAdmin, MalformedJob, parse_job
 from mailalias.mail.processor import HEARTBEAT_KEY
 from mailalias.mail.types import RetryableError
-from mailalias.models import Alias, AliasState, FailedDelivery, FailureKind, User, UserRole
+from mailalias.models import Alias, AliasState, FailedDelivery, FailureKind, User
 from mailalias.security.sessions import SessionStore
 from mailalias.services import audit, kv_sync
 from mailalias.services.kv_sync import LAST_RECONCILE_KEY
@@ -112,16 +112,15 @@ class AdminService:
         user_id: uuid.UUID,
         *,
         disabled: bool | None = None,
-        role: UserRole | None = None,
         limits: Mapping[str, int] | None = None,
         clear_limits: bool = False,
     ) -> UserSummary:
-        """Disable/enable a user, change their role, or override their limits.
+        """Disable/enable a user or override their limits.
 
         Args:
-            actor: The admin making the change (cannot disable or demote themselves).
+            actor: The admin making the change (cannot disable themselves).
             user_id: Target user.
-            disabled, role: New values; None leaves them unchanged.
+            disabled: New value; None leaves it unchanged.
             limits: Limit overrides (keys from LIMIT_KEYS); clear_limits resets to defaults.
         Returns:
             The updated summary. Raises NotFound or ValidationFailed.
@@ -129,8 +128,8 @@ class AdminService:
         user = await self.db.get(User, user_id)
         if user is None:
             raise NotFound("User not found")
-        if user.id == actor.id and (disabled or (role is not None and role != UserRole.ADMIN)):
-            raise ValidationFailed("You cannot disable or demote your own account")
+        if user.id == actor.id and disabled:
+            raise ValidationFailed("You cannot disable your own account")
         if limits is not None:
             unknown = set(limits) - LIMIT_KEYS
             if unknown:
@@ -138,8 +137,6 @@ class AdminService:
             user.limits = {**(user.limits or {}), **limits}
         if clear_limits:
             user.limits = None
-        if role is not None:
-            user.role = role
         if disabled is not None and disabled != (user.disabled_at is not None):
             user.disabled_at = datetime.now(UTC) if disabled else None
             if disabled:

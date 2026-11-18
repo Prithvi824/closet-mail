@@ -1,13 +1,13 @@
-"""Admin console endpoints (users, invites, health). Admin session required; no API tokens."""
+"""Admin console endpoints (users, health). Operator session required; no API tokens."""
 
 # 1st party imports
 import uuid
 
 # 3rd party imports
-from fastapi import APIRouter, status
+from fastapi import APIRouter
 
 # local imports
-from mailalias.api.deps import AdminUser, AppSettings, DbSession, QueueAdmin, SystemMail
+from mailalias.api.deps import AdminUser, AppSettings, DbSession, QueueAdmin
 from mailalias.db import get_redis
 from mailalias.schemas.admin import (
     AdminUserResponse,
@@ -16,44 +16,9 @@ from mailalias.schemas.admin import (
     DlqRetryRequest,
     HealthResponse,
 )
-from mailalias.schemas.auth import InviteCreate
-from mailalias.schemas.me import InviteResponse
 from mailalias.services.admin import AdminService
-from mailalias.services.invites import InviteService
 
 router = APIRouter(prefix="/admin", tags=["admin"])
-
-
-@router.get("/invites")
-async def list_invites(admin: AdminUser, db: DbSession) -> list[InviteResponse]:
-    """List all invites.
-
-    Args:
-        admin: Admin user.
-        db: Database session.
-    Returns:
-        Invites, newest first.
-    """
-    return [InviteResponse.model_validate(i) for i in await InviteService(db).list_all()]
-
-
-@router.post("/invites", status_code=status.HTTP_201_CREATED)
-async def create_invite(
-    body: InviteCreate, admin: AdminUser, db: DbSession, mail: SystemMail
-) -> InviteResponse:
-    """Invite an email address; the link is emailed to it.
-
-    Args:
-        body: Invitee email.
-        admin: Admin user.
-        db: Database session.
-        mail: System mail service.
-    Returns:
-        The created invite.
-    """
-    invite = await InviteService(db).create(str(body.email), admin, mail)
-    await db.commit()
-    return InviteResponse.model_validate(invite)
 
 
 @router.get("/users")
@@ -79,7 +44,7 @@ async def update_user(
     db: DbSession,
     settings: AppSettings,
 ) -> AdminUserResponse:
-    """Disable/enable a user, change their role or override their limits.
+    """Disable/enable a user or override their limits.
 
     Args:
         user_id: Target user.
@@ -93,7 +58,6 @@ async def update_user(
         admin,
         user_id,
         disabled=body.disabled,
-        role=body.role,
         limits=body.limits,
         clear_limits="limits" in fields and body.limits is None,
     )

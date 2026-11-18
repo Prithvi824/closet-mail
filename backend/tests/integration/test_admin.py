@@ -18,7 +18,7 @@ from mailalias.db import get_redis
 from mailalias.mail.outbound import FakeMailer
 from mailalias.mail.processor import HEARTBEAT_KEY
 from mailalias.models import FailureKind, User, UserRole
-from mailalias.security.sessions import SessionStore
+from mailalias.security.sessions import SESSION_COOKIE, SessionStore
 from mailalias.services.failed_deliveries import FailedDeliveryService
 from mailalias.services.quota import global_key
 from mailalias.services.system_mail import SystemMailService
@@ -92,19 +92,21 @@ async def _login(client: httpx.AsyncClient, username: str) -> None:
 
 
 @pytest.mark.usefixtures("queues")
-async def test_non_admin_is_forbidden(client: httpx.AsyncClient, session: AsyncSession) -> None:
-    """Every admin endpoint refuses a normal user."""
-    await _users(session)
-    await _login(client, "pia")
+async def test_non_operator_session_is_refused(
+    client: httpx.AsyncClient, session: AsyncSession
+) -> None:
+    """Every admin endpoint refuses a non-operator, even with a session from before."""
+    _, user = await _users(session)
+    sid = await SessionStore(get_redis()).create(user.id, mfa_passed=True)
+    client.cookies.set(SESSION_COOKIE, sid)
     for method, url in (
         ("GET", "/api/v1/admin/users"),
         ("GET", "/api/v1/admin/health"),
         ("GET", "/api/v1/admin/dlq"),
-        ("GET", "/api/v1/admin/invites"),
         ("POST", "/api/v1/admin/dlq/retry"),
     ):
         response = await client.request(method, url, json={} if method == "POST" else None)
-        assert response.status_code == 403, url
+        assert response.status_code == 401, url
 
 
 async def test_user_management(client: httpx.AsyncClient, session: AsyncSession) -> None:
@@ -123,7 +125,6 @@ async def test_user_management(client: httpx.AsyncClient, session: AsyncSession)
     assert (await client.patch(url, json={"limits": None})).json()["limits"] is None
     own = f"/api/v1/admin/users/{admin.id}"
     assert (await client.patch(own, json={"disabled": True})).status_code == 422
-    assert (await client.patch(own, json={"role": "user"})).status_code == 422
 
 
 async def test_health_numbers(

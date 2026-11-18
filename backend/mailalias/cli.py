@@ -5,6 +5,7 @@ import asyncio
 
 # 3rd party imports
 import typer
+from redis.asyncio import Redis
 
 # local imports
 from mailalias import __version__
@@ -19,6 +20,7 @@ from mailalias.logging_setup import configure_logging
 from mailalias.mail.outbound import QueuedMailer, get_direct_mailer
 from mailalias.mail.processor import MailProcessor
 from mailalias.models import UserRole
+from mailalias.security.sessions import SessionStore
 from mailalias.services.system_mail import SystemMailService
 from mailalias.services.users import UserService
 
@@ -86,6 +88,50 @@ def create_admin(
         typer.echo(f"error: {exc.message}", err=True)
         raise typer.Exit(1) from exc
     typer.echo(f"admin '{created}' created")
+
+
+async def _reset_password(username: str, password: str) -> None:
+    """Set the operator's password and sign out all of their sessions.
+
+    Args:
+        username: Operator username.
+        password: New plaintext password.
+    Returns:
+        None.
+    """
+    # A client of its own: the shared one may hold connections from another event loop.
+    redis = Redis.from_url(get_settings().redis_url, decode_responses=True)
+    try:
+        async with get_session_factory()() as db:
+            user = await UserService(db).set_password(username, password)
+            await db.commit()
+        await SessionStore(redis).delete_all_for_user(user.id)
+    finally:
+        await redis.aclose()
+        await get_engine().dispose()
+
+
+@app.command("reset-password")
+def reset_password(
+    username: str = typer.Option(..., help="Operator username"),
+    password: str = typer.Option(
+        ..., prompt=True, confirmation_prompt=True, hide_input=True, help="New password (prompted)"
+    ),
+) -> None:
+    """Set a new password for the operator account and end every session.
+
+    Args:
+        username: Operator username.
+        password: New password, prompted interactively when not given.
+    Returns:
+        None. Exits with code 1 when the account is not the operator or the password is weak.
+    """
+    try:
+        asyncio.run(_reset_password(username, password))
+    except DomainError as exc:
+        typer.echo(f"error: {exc.message}", err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(f"password for '{username}' updated; all sessions signed out")
 
 
 @app.command("send-test-mail")

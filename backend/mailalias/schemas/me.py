@@ -62,18 +62,6 @@ class PasswordConfirm(BaseModel):
     password: str = Field(min_length=1, max_length=256)
 
 
-class InviteResponse(BaseModel):
-    """Admin view of an invite (email shown; it is the admin's own data)."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    id: uuid.UUID
-    email: str
-    expires_at: datetime
-    used_at: datetime | None
-    created_at: datetime
-
-
 class PasskeyRegister(BaseModel):
     """Finish registering a passkey."""
 

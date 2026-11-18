@@ -38,9 +38,9 @@ async def _issue(
     client: httpx.AsyncClient,
     session: AsyncSession,
     scopes: list[str],
-    role: UserRole = UserRole.USER,
+    role: UserRole = UserRole.ADMIN,
 ) -> dict[str, str]:
-    """Create a user, sign in and issue a token.
+    """Create the operator, sign in and issue a token.
 
     Args:
         client: Browser-like client.

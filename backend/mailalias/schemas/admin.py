@@ -53,7 +53,6 @@ class AdminUserUpdate(BaseModel):
     """Partial update; `limits: null` resets to the defaults."""
 
     disabled: bool | None = None
-    role: UserRole | None = None
     limits: dict[str, int] | None = Field(default=None)
 
 

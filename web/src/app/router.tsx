@@ -10,18 +10,6 @@ export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
   { path: "/totp", lazy: async () => ({ Component: (await import("@/pages/auth/TotpPage")).TotpPage }) },
   {
-    path: "/invite/:token",
-    lazy: async () => ({ Component: (await import("@/pages/auth/InviteAcceptPage")).InviteAcceptPage }),
-  },
-  {
-    path: "/reset",
-    lazy: async () => ({ Component: (await import("@/pages/auth/ResetRequestPage")).ResetRequestPage }),
-  },
-  {
-    path: "/reset/:token",
-    lazy: async () => ({ Component: (await import("@/pages/auth/ResetConfirmPage")).ResetConfirmPage }),
-  },
-  {
     element: <RequireAuth />,
     children: [
       {
@@ -65,14 +53,6 @@ export const router = createBrowserRouter([
           {
             element: <RequireAuth admin />,
             children: [
-              {
-                path: "/admin/users",
-                lazy: async () => ({ Component: (await import("@/pages/admin/UsersPage")).UsersPage }),
-              },
-              {
-                path: "/admin/invites",
-                lazy: async () => ({ Component: (await import("@/pages/admin/InvitesPage")).InvitesPage }),
-              },
               {
                 path: "/admin/health",
                 lazy: async () => ({ Component: (await import("@/pages/admin/HealthPage")).HealthPage }),

@@ -121,7 +121,8 @@ async def test_monitor_alerts_and_dedup(session: AsyncSession) -> None:
     mailer = FakeMailer()
     mail = SystemMailService(mailer, settings)
     assert await send_alerts(session, redis, mail, alerts) == 4
-    assert {m.rcpt_to[0] for m in mailer.sent} == {admin.email}
+    # The harness user is an operator too, so both admins get the alerts.
+    assert {m.rcpt_to[0] for m in mailer.sent} == {admin.email, h.user.email}
     assert await send_alerts(session, redis, mail, alerts) == 0
 
 

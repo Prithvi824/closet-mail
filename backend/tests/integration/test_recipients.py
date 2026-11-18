@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 # local imports
 from mailalias.mail.outbound import FakeMailer
+from mailalias.models import UserRole
 from mailalias.services.users import UserService
 from tests.integration.harness import default_inbox
 from tests.pgp_keys import PgpTestKey, make_key
@@ -34,7 +35,7 @@ def keys() -> dict[str, PgpTestKey]:
 
 @pytest.fixture
 async def signed_in(client: httpx.AsyncClient, session: AsyncSession) -> httpx.AsyncClient:
-    """A logged-in regular user "erin" with one verified recipient.
+    """The operator "erin", logged in, with one verified recipient.
 
     Args:
         client: HTTP client.
@@ -42,7 +43,7 @@ async def signed_in(client: httpx.AsyncClient, session: AsyncSession) -> httpx.A
     Returns:
         The same client, now authenticated.
     """
-    await UserService(session).create_user("erin", "erin@example.com", PASSWORD)
+    await UserService(session).create_user("erin", "erin@example.com", PASSWORD, UserRole.ADMIN)
     await session.commit()
     login = await client.post("/api/v1/auth/login", json={"username": "erin", "password": PASSWORD})
     assert login.status_code == 200

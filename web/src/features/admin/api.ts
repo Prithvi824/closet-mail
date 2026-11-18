@@ -1,47 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import type { AdminUser, AdminUserUpdate, DlqItem, Health, Invite } from "@/lib/api";
+import type { DlqItem, Health } from "@/lib/api";
 import { http } from "@/lib/http";
 
 const HEALTH_REFRESH_MS = 30_000;
 
 export const adminKeys = {
-  users: ["admin", "users"] as const,
-  invites: ["admin", "invites"] as const,
   health: ["admin", "health"] as const,
   dlq: ["admin", "dlq"] as const,
 };
-
-export function useAdminUsers() {
-  return useQuery({
-    queryKey: adminKeys.users,
-    queryFn: async () => (await http.get<AdminUser[]>("/admin/users")).data,
-  });
-}
-
-export function useUpdateUser() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ id, ...changes }: AdminUserUpdate & { id: string }) =>
-      (await http.patch<AdminUser>(`/admin/users/${id}`, changes)).data,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: adminKeys.users }),
-  });
-}
-
-export function useInvites() {
-  return useQuery({
-    queryKey: adminKeys.invites,
-    queryFn: async () => (await http.get<Invite[]>("/admin/invites")).data,
-  });
-}
-
-export function useCreateInvite() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (email: string) => (await http.post<Invite>("/admin/invites", { email })).data,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: adminKeys.invites }),
-  });
-}
 
 export function useHealth() {
   return useQuery({

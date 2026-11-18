@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 # local imports
 from mailalias.config import get_settings
-from mailalias.models import Alias, AliasState, User
+from mailalias.models import Alias, AliasState, User, UserRole
 from mailalias.services import kv_sync
 from mailalias.services.aliases import AliasService
 from mailalias.services.users import UserService
@@ -23,23 +23,26 @@ PASSWORD = "correct horse battery"
 API = "/api/v1/aliases"
 
 
-async def _user(session: AsyncSession, username: str) -> User:
+async def _user(session: AsyncSession, username: str, role: UserRole = UserRole.USER) -> User:
     """Create a committed user.
 
     Args:
         session: Test session.
         username: Username.
+        role: Role (only the operator, an admin, can sign in).
     Returns:
         The user.
     """
-    user = await UserService(session).create_user(username, f"{username}@example.com", PASSWORD)
+    user = await UserService(session).create_user(
+        username, f"{username}@example.com", PASSWORD, role
+    )
     await session.commit()
     return user
 
 
 @pytest.fixture
 async def gina(client: httpx.AsyncClient, session: AsyncSession) -> User:
-    """User "gina", logged in on `client`.
+    """Operator "gina", logged in on `client`.
 
     Args:
         client: HTTP client.
@@ -47,7 +50,7 @@ async def gina(client: httpx.AsyncClient, session: AsyncSession) -> User:
     Returns:
         The user.
     """
-    user = await _user(session, "gina")
+    user = await _user(session, "gina", UserRole.ADMIN)
     response = await client.post(
         "/api/v1/auth/login", json={"username": "gina", "password": PASSWORD}
     )

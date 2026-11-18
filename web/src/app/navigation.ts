@@ -5,11 +5,9 @@ import {
   HeartPulseIcon,
   InboxIcon,
   KeyRoundIcon,
-  MailPlusIcon,
   MailXIcon,
   SettingsIcon,
   ShieldAlertIcon,
-  UsersIcon,
   type LucideIcon,
 } from "lucide-react";
 
@@ -31,7 +29,5 @@ export const MAIN_NAV: NavItem[] = [
 ];
 
 export const ADMIN_NAV: NavItem[] = [
-  { to: "/admin/users", label: "Users", icon: UsersIcon },
-  { to: "/admin/invites", label: "Invites", icon: MailPlusIcon },
   { to: "/admin/health", label: "Health", icon: HeartPulseIcon },
 ];

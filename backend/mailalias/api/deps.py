@@ -129,7 +129,8 @@ async def current_principal(request: Request, db: DbSession, sessions: Sessions)
         db: Database session.
         sessions: Session store.
     Returns:
-        The principal. Raises Unauthorized if missing, invalid, disabled, or MFA is pending.
+        The principal. Raises Unauthorized if missing, invalid, disabled, not the operator
+        (sessions only), or MFA is pending.
     """
     auth = request.headers.get("Authorization", "")
     if auth.lower().startswith("bearer "):
@@ -140,7 +141,12 @@ async def current_principal(request: Request, db: DbSession, sessions: Sessions)
         return Principal(user, token)
     _, data = await current_session(request, sessions)
     session_user = await db.get(User, uuid.UUID(data.user_id))
-    if session_user is None or session_user.disabled_at is not None:
+    # Only the operator signs in; a session left from before the lockdown is refused.
+    if (
+        session_user is None
+        or session_user.disabled_at is not None
+        or session_user.role != UserRole.ADMIN
+    ):
         raise Unauthorized("Not signed in")
     # Sessions start with mfa_passed=False only when the user has TOTP or passkeys.
     if not data.mfa_passed:
