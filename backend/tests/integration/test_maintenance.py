@@ -23,6 +23,7 @@ from mailalias.mail.outbound import FakeMailer
 from mailalias.mail.processor import HEARTBEAT_KEY
 from mailalias.mail.types import MailKind, Outcome
 from mailalias.models import (
+    DeliveryLog,
     FailedDelivery,
     FailureKind,
     Invite,
@@ -63,7 +64,7 @@ async def test_retention_rules(session: AsyncSession) -> None:
                 user_id=h.user.id,
                 kind=MailKind.FORWARD,
                 outcome=Outcome.DELIVERED,
-                created_at=NOW - timedelta(days=31),
+                created_at=NOW - timedelta(days=91),
             ),
             MailLog(user_id=h.user.id, kind=MailKind.FORWARD, outcome=Outcome.DELIVERED),
             FailedDelivery(
@@ -103,6 +104,31 @@ async def test_retention_rules(session: AsyncSession) -> None:
     )
     again = await run_retention(session, store)
     assert sum(vars(again).values()) == 0
+
+
+async def test_mail_log_and_its_deliveries_are_kept_for_90_days(session: AsyncSession) -> None:
+    """An 89-day-old message stays with its deliveries; a 91-day-old one goes with its own."""
+    h = await make_harness(session)
+    logs = {}
+    for age in (89, 91):
+        log = MailLog(
+            user_id=h.user.id,
+            kind=MailKind.FORWARD,
+            outcome=Outcome.DELIVERED,
+            created_at=NOW - timedelta(days=age),
+        )
+        session.add(log)
+        await session.flush()
+        session.add(DeliveryLog(mail_log_id=log.id, user_id=h.user.id, provider_id=f"p-{age}"))
+        logs[age] = log.id
+    await session.commit()
+    await run_retention(session, FakeStore())
+    await session.commit()
+    kept = (await session.scalars(select(DeliveryLog.provider_id))).all()
+    assert kept == ["p-89"]
+    assert await session.get(MailLog, logs[89]) is not None
+    session.expunge_all()
+    assert await session.get(MailLog, logs[91]) is None
 
 
 async def test_monitor_alerts_and_dedup(session: AsyncSession) -> None:

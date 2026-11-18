@@ -18,7 +18,7 @@ from mailalias.services.recipients import VERIFY_TTL
 
 logger = logging.getLogger(__name__)
 
-MAIL_LOG_DAYS = 30
+MAIL_LOG_DAYS = 90  # delivery_log rows go with their mail_log row (ON DELETE CASCADE)
 FAILED_DELIVERY_DAYS = 90
 QUARANTINE_BATCH = 200
 

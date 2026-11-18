@@ -474,6 +474,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/operator/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Overview
+         * @description Mail across every subdomain over the last `days` days.
+         *
+         *     Args:
+         *         operator, db, settings: Request dependencies.
+         *         days: Window (1-90 days, by received time).
+         *     Returns:
+         *         The overview.
+         */
+        get: operations["get_overview_api_v1_operator_overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/operator/subdomains": {
         parameters: {
             query?: never;
@@ -1403,13 +1429,14 @@ export interface paths {
         };
         /**
          * Get Activity
-         * @description Daily totals for the last `days` days and the last 100 handled messages.
+         * @description Who sent what, when and to which inboxes, over the last `days` days.
          *
          *     Args:
          *         user, db: The subdomain and the database session.
-         *         days: Window for the daily totals (1-90).
+         *         days: Window (1-90 days, by received time).
+         *         page: Page of recent mail (50 per page, newest first).
          *     Returns:
-         *         The activity summary.
+         *         The subdomain's activity.
          */
         get: operations["get_activity_api_v1_subdomains__subdomain__activity_get"];
         put?: never;
@@ -1424,16 +1451,6 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /**
-         * ActivityResponse
-         * @description Daily totals (oldest first) and the latest messages (newest first).
-         */
-        ActivityResponse: {
-            /** Daily */
-            daily: components["schemas"]["DailyActivity"][];
-            /** Recent */
-            recent: components["schemas"]["RecentMail"][];
-        };
         /**
          * AliasBulk
          * @description Bulk state change.
@@ -1659,21 +1676,46 @@ export interface components {
             blocked: boolean;
         };
         /**
-         * DailyActivity
-         * @description Totals for one day.
+         * CountItem
+         * @description A sender domain, sender address, alias address or inbox, with its count.
          */
-        DailyActivity: {
+        CountItem: {
+            /** Key */
+            key: string;
+            /** Count */
+            count: number;
+        };
+        /**
+         * DailyPoint
+         * @description One UTC day (by the time the mail was received).
+         */
+        DailyPoint: {
             /**
              * Day
              * Format: date
              */
             day: string;
-            /** Forwards */
-            forwards: number;
+            /** Received */
+            received: number;
+            /** Delivered */
+            delivered: number;
             /** Replies */
             replies: number;
-            /** Bytes */
-            bytes: number;
+        };
+        /**
+         * DeliveryStatus
+         * @description Latest known state of one send.
+         * @enum {string}
+         */
+        DeliveryStatus: "sent" | "delivered" | "bounced" | "complained" | "delayed";
+        /**
+         * Destination
+         * @description Where one copy went (inbox is None for a reply) and what the provider reported.
+         */
+        Destination: {
+            /** Inbox */
+            inbox: string | null;
+            status: components["schemas"]["DeliveryStatus"];
         };
         /**
          * DlqItemResponse
@@ -1822,6 +1864,38 @@ export interface components {
             mfa_methods: ("totp" | "webauthn")[];
         };
         /**
+         * MailEvent
+         * @description One handled message: when, from whom, to which alias, and to which inboxes.
+         */
+        MailEvent: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Received At
+             * Format: date-time
+             */
+            received_at: string;
+            kind: components["schemas"]["MailKind"];
+            outcome: components["schemas"]["Outcome"];
+            /** Reason */
+            reason: string | null;
+            /** Alias Address */
+            alias_address: string | null;
+            /** Sender */
+            sender: string | null;
+            /** Sender Domain */
+            sender_domain: string | null;
+            /** Destinations */
+            destinations: components["schemas"]["Destination"][];
+            /** Spam Score */
+            spam_score: number | null;
+            /** Size Bytes */
+            size_bytes: number;
+        };
+        /**
          * MailKind
          * @description What the classifier decided an inbound message is.
          * @enum {string}
@@ -1862,6 +1936,43 @@ export interface components {
          * @enum {string}
          */
         Outcome: "delivered" | "discarded" | "quarantined" | "blocked" | "rejected_reply" | "bounce_recorded";
+        /**
+         * OutcomeTotals
+         * @description Mail counts over a window: received forwards by outcome, plus replies sent.
+         */
+        OutcomeTotals: {
+            /** Received */
+            received: number;
+            /** Delivered */
+            delivered: number;
+            /** Quarantined */
+            quarantined: number;
+            /** Blocked */
+            blocked: number;
+            /** Discarded */
+            discarded: number;
+            /** Replies */
+            replies: number;
+        };
+        /**
+         * OverviewResponse
+         * @description Every subdomain together over `days` days.
+         */
+        OverviewResponse: {
+            /** Days */
+            days: number;
+            totals: components["schemas"]["OutcomeTotals"];
+            /** Daily */
+            daily: components["schemas"]["DailyPoint"][];
+            /** Per Subdomain */
+            per_subdomain: components["schemas"]["SubdomainTotals"][];
+            /** Top Sender Domains */
+            top_sender_domains: components["schemas"]["CountItem"][];
+            /** Sends Today */
+            sends_today: number;
+            /** Send Cap */
+            send_cap: number;
+        };
         /**
          * PasskeyAssertion
          * @description The browser's PublicKeyCredential (JSON form) for a login.
@@ -1967,34 +2078,6 @@ export interface components {
             expires_at: string;
         };
         /**
-         * RecentMail
-         * @description One handled message: what happened, never who or what it said.
-         */
-        RecentMail: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            kind: components["schemas"]["MailKind"];
-            outcome: components["schemas"]["Outcome"];
-            /** Reason */
-            reason: string | null;
-            /** Alias Id */
-            alias_id: string | null;
-            /** Alias Address */
-            alias_address: string | null;
-            /** Spam Score */
-            spam_score: number | null;
-            /** Size Bytes */
-            size_bytes: number;
-        };
-        /**
          * RecipientCreate
          * @description Add a forwarding destination.
          */
@@ -2065,6 +2148,31 @@ export interface components {
             strip_trackers?: boolean | null;
             /** Subdomain Catchall */
             subdomain_catchall?: boolean | null;
+        };
+        /**
+         * SubdomainActivityResponse
+         * @description One subdomain over `days` days, with a page of recent mail (newest first).
+         */
+        SubdomainActivityResponse: {
+            /** Days */
+            days: number;
+            totals: components["schemas"]["OutcomeTotals"];
+            /** Daily */
+            daily: components["schemas"]["DailyPoint"][];
+            /** Top Sender Domains */
+            top_sender_domains: components["schemas"]["CountItem"][];
+            /** Top Senders */
+            top_senders: components["schemas"]["CountItem"][];
+            /** Per Alias */
+            per_alias: components["schemas"]["CountItem"][];
+            /** Per Inbox */
+            per_inbox: components["schemas"]["CountItem"][];
+            /** Recent */
+            recent: components["schemas"]["MailEvent"][];
+            /** Page */
+            page: number;
+            /** Has More */
+            has_more: boolean;
         };
         /**
          * SubdomainCreate
@@ -2168,6 +2276,21 @@ export interface components {
             checked_at: string | null;
             /** Last Mail At */
             last_mail_at: string | null;
+        };
+        /**
+         * SubdomainTotals
+         * @description One subdomain's numbers on the overview.
+         */
+        SubdomainTotals: {
+            /** Label */
+            label: string;
+            /** Display Name */
+            display_name: string | null;
+            totals: components["schemas"]["OutcomeTotals"];
+            /** Sends Today */
+            sends_today: number;
+            /** Send Share */
+            send_share: number;
         };
         /**
          * SubdomainUpdate
@@ -2798,6 +2921,37 @@ export interface operations {
                 };
                 content: {
                     "text/html": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_overview_api_v1_operator_overview_get: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OverviewResponse"];
                 };
             };
             /** @description Validation Error */
@@ -4162,6 +4316,7 @@ export interface operations {
         parameters: {
             query?: {
                 days?: number;
+                page?: number;
             };
             header?: never;
             path: {
@@ -4177,7 +4332,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ActivityResponse"];
+                    "application/json": components["schemas"]["SubdomainActivityResponse"];
                 };
             };
             /** @description Validation Error */

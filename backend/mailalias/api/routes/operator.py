@@ -1,7 +1,7 @@
 """Operator console endpoints: subdomains, health and DLQ. Operator session; no API tokens."""
 
 # 3rd party imports
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # local imports
@@ -16,8 +16,10 @@ from mailalias.api.deps import (
 from mailalias.config import Settings
 from mailalias.db import get_redis
 from mailalias.models import User
+from mailalias.schemas.metrics import OverviewResponse
 from mailalias.schemas.operator import DlqItemResponse, DlqRetryRequest, HealthResponse
 from mailalias.schemas.subdomains import SubdomainCreate, SubdomainResponse, SubdomainUpdate
+from mailalias.services import metrics
 from mailalias.services.operator import OperatorService
 from mailalias.services.subdomains import SubdomainService, build_responses
 
@@ -35,6 +37,24 @@ async def _one(db: AsyncSession, settings: Settings, user: User) -> SubdomainRes
     """
     (response,) = await build_responses(db, get_redis(), settings, [user])
     return response
+
+
+@router.get("/overview")
+async def get_overview(
+    operator: Operator,
+    db: DbSession,
+    settings: AppSettings,
+    days: int = Query(default=30, ge=1, le=metrics.MAX_DAYS),
+) -> OverviewResponse:
+    """Mail across every subdomain over the last `days` days.
+
+    Args:
+        operator, db, settings: Request dependencies.
+        days: Window (1-90 days, by received time).
+    Returns:
+        The overview.
+    """
+    return await metrics.overview(db, get_redis(), settings, days=days)
 
 
 @router.get("/subdomains")

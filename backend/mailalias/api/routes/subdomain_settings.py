@@ -5,9 +5,9 @@ from fastapi import APIRouter, Query
 
 # local imports
 from mailalias.api.deps import CurrentSubdomain, DbSession
-from mailalias.schemas.activity import ActivityResponse
 from mailalias.schemas.me import SettingsUpdate, SubdomainSettings
-from mailalias.services import activity, kv_sync
+from mailalias.schemas.metrics import SubdomainActivityResponse
+from mailalias.services import kv_sync, metrics
 
 router = APIRouter(tags=["subdomain"])
 
@@ -49,15 +49,18 @@ async def update_settings(
 
 @router.get("/activity")
 async def get_activity(
-    user: CurrentSubdomain, db: DbSession, days: int = Query(default=30, ge=1, le=90)
-) -> ActivityResponse:
-    """Daily totals for the last `days` days and the last 100 handled messages.
+    user: CurrentSubdomain,
+    db: DbSession,
+    days: int = Query(default=30, ge=1, le=metrics.MAX_DAYS),
+    page: int = Query(default=1, ge=1),
+) -> SubdomainActivityResponse:
+    """Who sent what, when and to which inboxes, over the last `days` days.
 
     Args:
         user, db: The subdomain and the database session.
-        days: Window for the daily totals (1-90).
+        days: Window (1-90 days, by received time).
+        page: Page of recent mail (50 per page, newest first).
     Returns:
-        The activity summary.
+        The subdomain's activity.
     """
-    daily = await activity.daily_totals(db, user, days)
-    return ActivityResponse.build(daily, await activity.recent_mail(db, user))
+    return await metrics.subdomain_activity(db, user, days=days, page=page)
