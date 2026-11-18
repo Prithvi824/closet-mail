@@ -29,12 +29,14 @@ from mailalias.models import (
     MailLog,
     QuarantineItem,
     Recipient,
+    SubdomainState,
+    SubdomainStatus,
     UserRole,
 )
 from mailalias.security.crypto import lookup_hash
 from mailalias.services.backup import BackupError, backup_key, pg_environment, run_backup
 from mailalias.services.monitor import collect_alerts, send_alerts
-from mailalias.services.quota import global_key
+from mailalias.services.quota import global_key, share_key
 from mailalias.services.retention import run_retention
 from mailalias.services.system_mail import SystemMailService
 from mailalias.services.users import UserService
@@ -123,6 +125,43 @@ async def test_monitor_alerts_and_dedup(session: AsyncSession) -> None:
     assert await send_alerts(session, redis, mail, alerts) == 4
     # The harness user is an operator too, so both admins get the alerts.
     assert {m.rcpt_to[0] for m in mailer.sent} == {admin.email, h.user.email}
+    assert await send_alerts(session, redis, mail, alerts) == 0
+
+
+async def test_subdomain_alerts_once_per_subdomain_and_problem(session: AsyncSession) -> None:
+    """DNS missing, no inbox and a used-up share alert per live subdomain; repeats are held."""
+    operator = await UserService(session).create_user(
+        "boss", "boss@example.com", "x" * 12, UserRole.ADMIN
+    )
+    users = {}
+    for label in ("acme", "beta", "gamma", "delta", "omega"):
+        users[label] = await UserService(session).create_user(
+            label, f"{label}@example.com", "x" * 12
+        )
+    states = {
+        "acme": SubdomainState.DNS_MISSING,
+        "beta": SubdomainState.NO_INBOX,
+        "delta": SubdomainState.DNS_MISSING,
+        "omega": SubdomainState.DNS_MISSING,
+    }
+    for label, state in states.items():
+        session.add(SubdomainStatus(user_id=users[label].id, state=state, checked_at=NOW))
+    users["delta"].disabled_at = NOW
+    users["omega"].retired_at = NOW
+    await session.commit()
+    redis = get_redis()
+    await redis.set(HEARTBEAT_KEY, NOW.isoformat())
+    await redis.set(share_key(users["gamma"].id), get_settings().subdomain_sends_per_day)
+    alerts = await collect_alerts(session, get_settings(), redis, FakeQueues())  # type: ignore[arg-type]
+    assert {a.key for a in alerts} == {
+        "sub:acme:dns_missing",
+        "sub:beta:no_inbox",
+        "sub:gamma:share",
+    }
+    mailer = FakeMailer()
+    mail = SystemMailService(mailer, get_settings())
+    assert await send_alerts(session, redis, mail, alerts) == 3
+    assert {m.rcpt_to[0] for m in mailer.sent} == {operator.email}
     assert await send_alerts(session, redis, mail, alerts) == 0
 
 

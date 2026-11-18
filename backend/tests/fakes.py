@@ -2,6 +2,10 @@
 
 # 1st party imports
 from collections.abc import AsyncIterator
+from typing import Literal
+
+# local imports
+from mailalias.integrations.cloudflare_dns import DnsRecord
 
 
 class FakeKv:
@@ -90,3 +94,44 @@ class FakeKv:
         for key in sorted(self.data):
             if key.startswith(prefix):
                 yield key, self.metadata.get(key)
+
+    async def get(self, key: str) -> str | None:
+        """Read a key.
+
+        Args:
+            key: Key.
+        Returns:
+            The value or None.
+        """
+        return self.data.get(key)
+
+
+class FakeDns:
+    """CloudflareDns stand-in: records by (name, type), or an error to raise."""
+
+    def __init__(self, records: dict[tuple[str, str], list[str]] | None = None) -> None:
+        """Create the fake.
+
+        Args:
+            records: (fqdn, type) -> record contents.
+        Returns:
+            None.
+        """
+        self.records_by_key = dict(records or {})
+        self.error: Exception | None = None
+
+    async def records(self, name: str, record_type: Literal["MX", "TXT"]) -> list[DnsRecord]:
+        """Return the configured records or raise the configured error.
+
+        Args:
+            name: FQDN.
+            record_type: "MX" or "TXT".
+        Returns:
+            The records.
+        """
+        if self.error is not None:
+            raise self.error
+        return [
+            DnsRecord(record_type, name, content, 1 if record_type == "MX" else None)
+            for content in self.records_by_key.get((name, record_type), [])
+        ]

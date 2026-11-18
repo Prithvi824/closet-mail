@@ -546,6 +546,32 @@ export interface paths {
         patch: operations["update_subdomain_api_v1_operator_subdomains__label__patch"];
         trace?: never;
     };
+    "/api/v1/operator/subdomains/{label}/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Subdomain
+         * @description Re-check a subdomain's DNS, edge flag and inboxes now ("Check now").
+         *
+         *     Args:
+         *         label: Subdomain label.
+         *         operator, db, settings, checker: Request dependencies.
+         *     Returns:
+         *         The subdomain with its fresh status.
+         */
+        post: operations["check_subdomain_api_v1_operator_subdomains__label__check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/operator/subdomains/{label}/retire": {
         parameters: {
             query?: never;
@@ -2883,6 +2909,37 @@ export interface operations {
                 "application/json": components["schemas"]["SubdomainUpdate"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubdomainResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_subdomain_api_v1_operator_subdomains__label__check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                label: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

@@ -16,12 +16,15 @@ from mailalias.api.errors import Conflict, Forbidden, NotFound, Unauthorized
 from mailalias.config import Settings, get_settings
 from mailalias.db import get_redis, get_session
 from mailalias.integrations.cloudflare_api import CloudflareApi
+from mailalias.integrations.cloudflare_dns import CloudflareDns
+from mailalias.integrations.cloudflare_kv import CloudflareKv
 from mailalias.integrations.cloudflare_queue import CloudflareQueueAdmin
 from mailalias.integrations.r2 import ObjectStore, R2Storage
 from mailalias.mail.outbound import OutboundMailer, get_mailer
 from mailalias.models import ApiToken, User, UserRole
 from mailalias.security.sessions import SESSION_COOKIE, SessionData, SessionStore
 from mailalias.services.api_tokens import TokenService
+from mailalias.services.subdomain_status import SubdomainStatusChecker
 from mailalias.services.system_mail import SystemMailService
 
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
@@ -72,6 +75,29 @@ async def get_queue_admin(settings: AppSettings) -> AsyncIterator[CloudflareQueu
 
 
 QueueAdmin = Annotated[CloudflareQueueAdmin, Depends(get_queue_admin)]
+
+
+async def get_status_checker(
+    db: DbSession, settings: AppSettings
+) -> AsyncIterator[SubdomainStatusChecker]:
+    """Subdomain status checker on the Cloudflare API (FastAPI dependency; overridden in tests).
+
+    Args:
+        db: Database session.
+        settings: Settings (zone and KV namespace ids).
+    Returns:
+        An async iterator yielding the checker; the HTTP client is closed afterwards.
+    """
+    api = CloudflareApi(settings)
+    try:
+        dns = CloudflareDns(api, settings.cf_zone_id) if settings.cf_zone_id else None
+        kv = CloudflareKv(api, settings.cf_kv_namespace_id)
+        yield SubdomainStatusChecker(db, dns, kv, settings)
+    finally:
+        await api.aclose()
+
+
+StatusChecker = Annotated[SubdomainStatusChecker, Depends(get_status_checker)]
 
 
 def get_system_mail(

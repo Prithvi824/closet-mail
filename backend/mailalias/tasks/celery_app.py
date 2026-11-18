@@ -33,6 +33,7 @@ celery_app = Celery(
         "mailalias.tasks.quarantine",
         "mailalias.tasks.maintenance",
         "mailalias.tasks.monitor",
+        "mailalias.tasks.subdomains",
     ],
 )
 celery_app.conf.update(
@@ -47,6 +48,7 @@ celery_app.conf.update(
         "kv-reconcile": {"task": "kv.reconcile_all", "schedule": timedelta(minutes=15)},
         "retention": {"task": "maintenance.retention", "schedule": crontab(minute=7)},
         "monitor": {"task": "monitor.check", "schedule": timedelta(minutes=5)},
+        "subdomain-status": {"task": "subdomains.check_status", "schedule": timedelta(minutes=15)},
         # 02:00 Asia/Kolkata (UTC+05:30, no DST) = 20:30 UTC.
         "backup": {"task": "maintenance.backup", "schedule": crontab(hour=20, minute=30)},
     },

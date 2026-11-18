@@ -71,6 +71,17 @@ class CloudflareApi:
         """
         return f"{CF_API_BASE}/accounts/{self.account_id}{suffix}"
 
+    def zone_path(self, zone_id: str, suffix: str) -> str:
+        """Build a zone-scoped URL.
+
+        Args:
+            zone_id: Cloudflare zone id (CF_ZONE_ID).
+            suffix: Path after /zones/{id}, starting with "/".
+        Returns:
+            The absolute URL.
+        """
+        return f"{CF_API_BASE}/zones/{zone_id}{suffix}"
+
     async def request(self, label: str, method: str, url: str, **kwargs: Any) -> httpx.Response:
         """Send a request, retrying 429/5xx/transport errors with exponential backoff.
 

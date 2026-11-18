@@ -5,7 +5,14 @@ from fastapi import APIRouter, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # local imports
-from mailalias.api.deps import AppSettings, DbSession, Operator, QueueAdmin, SystemMail
+from mailalias.api.deps import (
+    AppSettings,
+    DbSession,
+    Operator,
+    QueueAdmin,
+    StatusChecker,
+    SystemMail,
+)
 from mailalias.config import Settings
 from mailalias.db import get_redis
 from mailalias.models import User
@@ -110,6 +117,28 @@ async def update_subdomain(
         clear_limits=body.clear_limits,
         actor=operator,
     )
+    await db.commit()
+    return await _one(db, settings, user)
+
+
+@router.post("/subdomains/{label}/check")
+async def check_subdomain(
+    label: str,
+    operator: Operator,
+    db: DbSession,
+    settings: AppSettings,
+    checker: StatusChecker,
+) -> SubdomainResponse:
+    """Re-check a subdomain's DNS, edge flag and inboxes now ("Check now").
+
+    Args:
+        label: Subdomain label.
+        operator, db, settings, checker: Request dependencies.
+    Returns:
+        The subdomain with its fresh status.
+    """
+    user = await SubdomainService(db, settings).get(label)
+    await checker.check(user)
     await db.commit()
     return await _one(db, settings, user)
 

@@ -7,7 +7,7 @@ from typing import Any
 from urllib.parse import quote
 
 # local imports
-from mailalias.integrations.cloudflare_api import CloudflareApi
+from mailalias.integrations.cloudflare_api import CloudflareApi, CloudflareApiError
 
 BULK_LIMIT = 10_000
 LIST_PAGE_SIZE = 1000
@@ -49,6 +49,22 @@ class CloudflareKv:
         """
         form = {"value": (None, value), "metadata": (None, json.dumps({"v": value}))}
         await self._api.json("kv.put", "PUT", self._value_url(key), files=form)
+
+    async def get(self, key: str) -> str | None:
+        """Read one key (a KV read, not a list, so it stays within the free read budget).
+
+        Args:
+            key: KV key.
+        Returns:
+            The value, or None when the key does not exist.
+        """
+        try:
+            response = await self._api.request("kv.get", "GET", self._value_url(key))
+        except CloudflareApiError as exc:
+            if exc.status == 404:
+                return None
+            raise
+        return response.text
 
     async def delete(self, key: str) -> None:
         """Delete one key (missing keys are fine).
