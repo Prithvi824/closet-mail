@@ -1,7 +1,9 @@
-"""Record handled messages: the mail_log row plus alias/contact counters and daily usage."""
+"""Record handled messages: the mail_log row, one delivery row per send, counters and usage."""
 
 # 1st party imports
 import uuid
+from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 # 3rd party imports
@@ -11,10 +13,28 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 # local imports
 from mailalias.mail.types import MailKind, Outcome
-from mailalias.models import Alias, Contact, MailLog, UsageDaily
+from mailalias.models import Alias, Contact, DeliveryLog, DeliveryStatus, MailLog, UsageDaily
+from mailalias.security.crypto import lookup_hash
 
 # Discard reasons that count as "blocked" on the alias (mail the owner chose not to receive).
 BLOCKED_REASONS = frozenset({"alias_inactive"})
+
+# usage_daily column bumped for each forward outcome (every forward also bumps "received").
+FORWARD_OUTCOME_COLUMNS = {
+    Outcome.DELIVERED: "forwards",
+    Outcome.QUARANTINED: "quarantined",
+    Outcome.BLOCKED: "blocked",
+    Outcome.DISCARDED: "discarded",
+}
+USAGE_COLUMNS = ("received", "forwards", "quarantined", "blocked", "discarded", "replies", "bytes")
+
+
+@dataclass(frozen=True)
+class DeliveryRecord:
+    """One completed send: the inbox (None for a reply) and the provider's message id."""
+
+    recipient_id: uuid.UUID | None
+    provider_id: str | None
 
 
 async def _bump_counters(
@@ -60,38 +80,50 @@ async def _bump_counters(
         )
 
 
+def _usage_increments(kind: MailKind, outcome: Outcome, size_bytes: int) -> dict[str, int]:
+    """usage_daily increments for one handled message (empty when it is not counted).
+
+    Args:
+        kind, outcome: What happened.
+        size_bytes: Message size (counted only for delivered mail).
+    Returns:
+        Column name -> increment.
+    """
+    if kind == MailKind.FORWARD:
+        increments = {"received": 1}
+        column = FORWARD_OUTCOME_COLUMNS.get(outcome)
+        if column:
+            increments[column] = 1
+        if outcome == Outcome.DELIVERED:
+            increments["bytes"] = size_bytes
+        return increments
+    if kind == MailKind.REPLY and outcome == Outcome.DELIVERED:
+        return {"replies": 1, "bytes": size_bytes}
+    return {}
+
+
 async def _bump_usage(
-    db: AsyncSession, user_id: uuid.UUID, kind: MailKind, size_bytes: int, now: datetime
+    db: AsyncSession, user_id: uuid.UUID, increments: dict[str, int], received_at: datetime
 ) -> None:
-    """Upsert today's usage_daily row for a delivered forward or reply.
+    """Upsert the usage_daily row for the day the message was received.
 
     Args:
         db: Session.
-        user_id: User.
-        kind: FORWARD or REPLY.
-        size_bytes: Message size.
-        now: Timestamp (its UTC date is the bucket).
+        user_id: Subdomain (user) the message belongs to.
+        increments: Column name -> increment, from _usage_increments.
+        received_at: When the edge accepted the message (its UTC date is the bucket).
     Returns:
         None.
     """
-    forwards, replies = (1, 0) if kind == MailKind.FORWARD else (0, 1)
+    values = {column: increments.get(column, 0) for column in USAGE_COLUMNS}
     statement = insert(UsageDaily).values(
-        id=uuid.uuid4(),
-        user_id=user_id,
-        day=now.date(),
-        forwards=forwards,
-        replies=replies,
-        bytes=size_bytes,
+        id=uuid.uuid4(), user_id=user_id, day=received_at.astimezone(UTC).date(), **values
     )
-    statement = statement.on_conflict_do_update(
-        constraint="uq_usage_daily_user_day",
-        set_={
-            "forwards": UsageDaily.forwards + statement.excluded.forwards,
-            "replies": UsageDaily.replies + statement.excluded.replies,
-            "bytes": UsageDaily.bytes + statement.excluded.bytes,
-            "updated_at": now,
-        },
-    )
+    set_: dict[str, object] = {
+        column: getattr(UsageDaily, column) + statement.excluded[column] for column in USAGE_COLUMNS
+    }
+    set_["updated_at"] = datetime.now(UTC)
+    statement = statement.on_conflict_do_update(constraint="uq_usage_daily_user_day", set_=set_)
     await db.execute(statement)
 
 
@@ -107,17 +139,26 @@ async def record(
     size_bytes: int = 0,
     spam_score: float | None = None,
     provider_id: str | None = None,
+    received_at: datetime | None = None,
+    sender_address: str | None = None,
+    deliveries: Sequence[DeliveryRecord] = (),
+    count_usage: bool = True,
 ) -> MailLog:
-    """Log one handled message and update counters (no subjects or addresses are stored).
+    """Log one handled message with its deliveries; bump counters unless it is a redelivery.
 
     Args:
         db: Session (the caller commits).
-        kind, outcome, reason: What happened.
-        user_id, alias_id, contact_id, size_bytes, spam_score, provider_id: Metadata.
+        kind, outcome, reason, user_id, alias_id, contact_id, size_bytes, spam_score: Metadata.
+        provider_id, deliveries: First send's id (legacy) and one record per send.
+        received_at, sender_address, count_usage: Edge time, sender (domain kept), count it.
     Returns:
         The MailLog row.
     """
     now = datetime.now(UTC)
+    received_at = received_at or now
+    domain = None
+    if sender_address and "@" in sender_address:
+        domain = sender_address.rsplit("@", 1)[1].strip().lower() or None
     entry = MailLog(
         user_id=user_id,
         alias_id=alias_id,
@@ -128,26 +169,35 @@ async def record(
         size_bytes=size_bytes,
         spam_score=spam_score,
         provider_id=provider_id,
+        received_at=received_at,
+        sender_domain_hash=lookup_hash(domain) if domain else None,
+        sender_domain=domain,
     )
     db.add(entry)
-    await _bump_counters(
-        db,
-        kind=kind,
-        outcome=outcome,
-        reason=reason,
-        alias_id=alias_id,
-        contact_id=contact_id,
-        now=now,
-    )
-    if (
-        user_id is not None
-        and outcome == Outcome.DELIVERED
-        and kind
-        in (
-            MailKind.FORWARD,
-            MailKind.REPLY,
+    await db.flush()
+    for delivery in deliveries:
+        db.add(
+            DeliveryLog(
+                mail_log_id=entry.id,
+                user_id=user_id,
+                recipient_id=delivery.recipient_id,
+                provider_id=delivery.provider_id,
+                status=DeliveryStatus.SENT,
+                status_at=now,
+            )
         )
-    ):
-        await _bump_usage(db, user_id, kind, size_bytes, now)
+    if count_usage:
+        await _bump_counters(
+            db,
+            kind=kind,
+            outcome=outcome,
+            reason=reason,
+            alias_id=alias_id,
+            contact_id=contact_id,
+            now=now,
+        )
+        increments = _usage_increments(kind, outcome, size_bytes)
+        if user_id is not None and increments:
+            await _bump_usage(db, user_id, increments, received_at)
     await db.flush()
     return entry

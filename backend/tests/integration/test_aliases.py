@@ -318,3 +318,31 @@ async def test_kv_sync_values_and_reconcile(session: AsyncSession) -> None:
     assert drifted.data["a:on@closetcompute.online"] == "A"
     await kv_sync.reconcile(session, drifted, get_redis(), delete_extra=True)  # type: ignore[arg-type]
     assert "a:stale@closetcompute.online" not in drifted.data
+
+
+async def test_reconcile_writes_only_keys_whose_value_differs(session: AsyncSession) -> None:
+    """A repeat reconcile writes nothing; one changed value writes exactly one key.
+
+    Args:
+        session: Test session.
+    Returns:
+        None.
+    """
+    from mailalias.db import get_redis
+
+    user = await _user(session, "kim")
+    service = AliasService(session, get_settings())
+    first = await service.create(user, local_part="one")
+    await service.create(user, local_part="two")
+    await session.commit()
+    kv = FakeKv()
+    summary = await kv_sync.reconcile(session, kv, get_redis(), delete_extra=False)  # type: ignore[arg-type]
+    assert summary["written"] == summary["keys"] > 0
+    kv.writes = 0
+    summary = await kv_sync.reconcile(session, kv, get_redis(), delete_extra=False)  # type: ignore[arg-type]
+    assert (summary["written"], kv.writes) == (0, 0)
+    first.state = AliasState.INACTIVE
+    await session.commit()
+    summary = await kv_sync.reconcile(session, kv, get_redis(), delete_extra=False)  # type: ignore[arg-type]
+    assert (summary["written"], kv.writes) == (1, 1)
+    assert kv.data["a:one@closetcompute.online"] == "I"

@@ -260,15 +260,35 @@ async def test_4xx_is_permanent() -> None:
 
 
 @respx.mock
-async def test_kv_put_escapes_key_and_sends_value() -> None:
-    """Keys with ':' and '@' are percent-encoded; the value is the raw body.
+async def test_kv_put_escapes_key_and_sends_value_with_metadata() -> None:
+    """Keys with ':' and '@' are percent-encoded; the value also travels as metadata {"v": ...}.
 
     Returns:
         None.
     """
     route = respx.put(f"{KV}/values/a%3Aspike%40closetcompute.online").respond(json=_ok(None))
     await CloudflareKv(_api(), "test-kv").put("a:spike@closetcompute.online", "A")
-    assert route.calls[0].request.content == b"A"
+    request = route.calls[0].request
+    assert request.headers["content-type"].startswith("multipart/form-data")
+    body = request.content.decode()
+    assert 'name="value"\r\n\r\nA\r\n' in body
+    assert 'name="metadata"\r\n\r\n{"v": "A"}\r\n' in body
+
+
+@respx.mock
+async def test_kv_list_entries_yields_metadata_values() -> None:
+    """list_entries pairs each key with the value stored in its metadata (None when absent).
+
+    Returns:
+        None.
+    """
+    respx.get(f"{KV}/keys").respond(
+        json=_ok(
+            [{"name": "a:1", "metadata": {"v": "A"}}, {"name": "a:2"}], result_info={"cursor": ""}
+        )
+    )
+    entries = [entry async for entry in CloudflareKv(_api(), "test-kv").list_entries("a:")]
+    assert entries == [("a:1", "A"), ("a:2", None)]
 
 
 @respx.mock
@@ -304,7 +324,9 @@ async def test_kv_bulk_put_and_delete() -> None:
     kv = CloudflareKv(_api(), "test-kv")
     await kv.bulk_put({"r:tok": "V"})
     await kv.bulk_delete(["r:old"])
-    assert json.loads(put.calls[0].request.content) == [{"key": "r:tok", "value": "V"}]
+    assert json.loads(put.calls[0].request.content) == [
+        {"key": "r:tok", "value": "V", "metadata": {"v": "V"}}
+    ]
     assert json.loads(delete.calls[0].request.content) == ["r:old"]
 
 

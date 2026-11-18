@@ -15,11 +15,21 @@ from mailalias.mail.processor import HEARTBEAT_KEY
 from mailalias.mail.transform.banner import TEXT_START
 from mailalias.mail.transform.pgp import PGP_ARMOR
 from mailalias.mail.types import InboundEnvelope, MailKind, Outcome, RetryableError
-from mailalias.models import Alias, AliasState, Contact, FailedDelivery, FailureKind, Recipient
+from mailalias.models import (
+    Alias,
+    AliasState,
+    Contact,
+    DeliveryLog,
+    FailedDelivery,
+    FailureKind,
+    Recipient,
+    UsageDaily,
+)
+from mailalias.security.crypto import lookup_hash
 from mailalias.services.contacts import ContactService
 from mailalias.services.quota import global_key
 from tests.eml import envelope
-from tests.integration.harness import FlakyMailer, mail_logs, make_harness
+from tests.integration.harness import FlakyMailer, Harness, mail_logs, make_harness
 from tests.pgp_keys import make_key
 
 pytestmark = pytest.mark.usefixtures("dispatched")
@@ -221,3 +231,106 @@ async def test_recipient_with_pgp_key_gets_encrypted_forward(session: AsyncSessi
     body = sent.message.get_body(("plain",))
     assert body is not None and body.get_content().startswith(PGP_ARMOR)
     assert TEXT_START.encode() not in sent.message.as_bytes()
+
+
+async def _second_inbox(
+    session: AsyncSession, h: Harness, email: str = "pia2@example.org"
+) -> Recipient:
+    """Add a verified second inbox for the harness user.
+
+    Args:
+        session: Test session.
+        h: Harness.
+        email: Inbox address.
+    Returns:
+        The recipient.
+    """
+    recipient = Recipient(
+        user_id=h.user.id,
+        email=email,
+        email_hash=lookup_hash(email),
+        verified_at=h.user.created_at,
+    )
+    session.add(recipient)
+    await session.flush()
+    return recipient
+
+
+async def _drain(h: Harness) -> None:
+    """Run the processor until the fake inbox is empty.
+
+    Args:
+        h: Harness.
+    Returns:
+        None.
+    """
+    while h.inbox.envelopes:
+        await h.processor.run_once()
+
+
+async def test_forward_to_two_inboxes_logs_each_delivery_and_sender(
+    session: AsyncSession,
+) -> None:
+    """Each inbox gets its own delivery row and provider id; the log keeps time and sender."""
+    h = await make_harness(session)
+    second = await _second_inbox(session, h)
+    first = await session.get(Recipient, h.user.default_recipient_id)
+    assert first is not None
+    h.alias.recipients = [first, second]
+    await session.commit()
+    h.enqueue("fwd_alternative.eml")
+    await h.processor.run_once()
+    assert len(h.mailer.sent) == 2
+    (log,) = await mail_logs(session, h)
+    rows = (
+        await session.scalars(select(DeliveryLog).where(DeliveryLog.mail_log_id == log.id))
+    ).all()
+    assert {(r.recipient_id, r.provider_id) for r in rows} == {
+        (first.id, "fake-1"),
+        (second.id, "fake-2"),
+    }
+    assert log.sender_domain == "example.net"
+    assert log.received_at is not None
+
+
+async def test_catchall_is_not_limited_by_hourly_alias_creation(session: AsyncSession) -> None:
+    """More new catch-all addresses than the hourly create limit all become aliases."""
+    h = await make_harness(session)
+    h.user.subdomain_catchall = True
+    await session.commit()
+    count = get_settings().user_alias_creates_per_hour + 5
+    for index in range(count):
+        h.enqueue("fwd_alternative.eml", rcpt_to=f"shop{index}@pia.closetcompute.online")
+    await _drain(h)
+    created = (
+        await session.scalars(
+            select(Alias).where(Alias.user_id == h.user.id, Alias.local_part.like("shop_%"))
+        )
+    ).all()
+    assert len(created) == count
+
+
+async def test_unknown_address_on_a_subdomain_is_logged_to_it(session: AsyncSession) -> None:
+    """A drop for an unknown address on an existing subdomain counts toward that subdomain."""
+    h = await make_harness(session)
+    h.enqueue("fwd_alternative.eml", rcpt_to="x@pia.closetcompute.online")
+    await h.processor.run_once()
+    (log,) = await mail_logs(session, h)
+    assert (log.outcome, log.reason, log.alias_id) == (Outcome.DISCARDED, "unknown_alias", None)
+
+
+async def test_redelivered_forward_is_not_counted_twice(session: AsyncSession) -> None:
+    """A message processed again after it was fully delivered sends nothing and counts once."""
+    h = await make_harness(session)
+    lease = h.enqueue("fwd_alternative.eml")
+    await h.processor.run_once()
+    h.inbox.envelopes.append(envelope(h.alias.address))
+    h.inbox.envelopes[-1] = InboundEnvelope(
+        **{**h.inbox.envelopes[-1].__dict__, "lease_id": lease, "r2_key": "in/lease-0.eml"}
+    )
+    await h.processor.run_once()
+    assert len(h.mailer.sent) == 1
+    usage = (await session.scalars(select(UsageDaily).where(UsageDaily.user_id == h.user.id))).one()
+    assert (usage.received, usage.forwards) == (1, 1)
+    await session.refresh(h.alias)
+    assert h.alias.forwarded_count == 1

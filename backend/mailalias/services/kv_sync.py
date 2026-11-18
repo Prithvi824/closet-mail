@@ -206,7 +206,7 @@ async def desired_state(db: AsyncSession) -> dict[str, str]:
 async def reconcile(
     db: AsyncSession, kv: CloudflareKv, redis: Redis, *, delete_extra: bool
 ) -> dict[str, Any]:
-    """Rewrite all desired keys, optionally delete unknown ones, and record drift in Redis.
+    """Write desired keys whose value differs, optionally delete unknown ones, record drift.
 
     Args:
         db: Session.
@@ -215,17 +215,19 @@ async def reconcile(
         delete_extra: Remove keys the DB does not know. Only safe against the production DB,
             because dev and prod share one KV namespace.
     Returns:
-        Summary {"at", "keys", "missing", "extra", "deleted"}.
+        Summary {"at", "keys", "missing", "extra", "written", "deleted"}.
     """
     desired = await desired_state(db)
-    actual: set[str] = set()
+    actual: dict[str, str | None] = {}
     for prefix in (ALIAS_PREFIX, TOKEN_PREFIX, SUBDOMAIN_PREFIX):
-        actual.update([key async for key in kv.list_keys(prefix)])
-    extra = sorted(actual - desired.keys())
-    missing = len(desired.keys() - actual)
-    # Values cannot be listed cheaply, so rewrite every desired key (small at internal scale).
-    if desired:
-        await kv.bulk_put(desired)
+        actual.update([entry async for entry in kv.list_entries(prefix)])
+    extra = sorted(actual.keys() - desired.keys())
+    missing = len(desired.keys() - actual.keys())
+    # Every write stores its value in the key's metadata, so listing shows what differs and
+    # unchanged keys cost no KV writes (keys written before that are rewritten once).
+    changed = {key: value for key, value in desired.items() if actual.get(key) != value}
+    if changed:
+        await kv.bulk_put(changed)
     if extra and delete_extra:
         await kv.bulk_delete(extra)
     summary = {
@@ -233,6 +235,7 @@ async def reconcile(
         "keys": len(desired),
         "missing": missing,
         "extra": len(extra),
+        "written": len(changed),
         "deleted": delete_extra,
     }
     await redis.set(LAST_RECONCILE_KEY, json.dumps(summary))

@@ -22,6 +22,7 @@ from mailalias.models import Alias, AliasState, Contact, Recipient, User
 from mailalias.security.crypto import lookup_hash
 from mailalias.services import mail_log
 from mailalias.services.contacts import ContactService
+from mailalias.services.mail_log import DeliveryRecord
 from mailalias.services.notices import notify_owner
 from mailalias.services.quota import QuotaService, cap_retry_delay
 from mailalias.services.system_mail import SystemMailService
@@ -77,17 +78,20 @@ class ReplyHandler:
         alias: Alias | None = None,
         contact: Contact | None = None,
         provider_id: str | None = None,
+        *,
+        count_usage: bool = True,
     ) -> HandlerResult:
         """Write the mail log, commit, and build the result.
 
         Args:
             outcome, reason: What happened.
-            env: Envelope (size).
-            alias, contact: Resolved objects, if any.
-            provider_id: Provider id of the sent reply.
+            env, alias, contact: Envelope (size, time, sender); resolved objects, if any.
+            provider_id: Provider id of the sent reply (also recorded as its one delivery).
+            count_usage: False when the reply was already counted (redelivery).
         Returns:
             The HandlerResult.
         """
+        sent = outcome == Outcome.DELIVERED and provider_id is not None
         await mail_log.record(
             self.db,
             kind=MailKind.REPLY,
@@ -98,6 +102,10 @@ class ReplyHandler:
             contact_id=contact.id if contact else None,
             size_bytes=env.raw_size,
             provider_id=provider_id,
+            received_at=env.received_at,
+            sender_address=env.mail_from if sent else None,
+            deliveries=[DeliveryRecord(None, provider_id)] if sent else (),
+            count_usage=count_usage,
         )
         await self.db.commit()
         return HandlerResult(outcome, reason)
@@ -257,7 +265,9 @@ class ReplyHandler:
         """
         done_key = f"reply:done:{env.r2_key}"
         if await self.redis.exists(done_key):
-            return await self._finish(Outcome.DELIVERED, "redelivered", env, alias, contact)
+            return await self._finish(
+                Outcome.DELIVERED, "redelivered", env, alias, contact, count_usage=False
+            )
         if not await self.quota.global_send_allowed():
             raise RetryableError("global send cap reached", cap_retry_delay())
         if not await self.quota.check_and_consume(owner.id, "reply", limits=owner.limits):

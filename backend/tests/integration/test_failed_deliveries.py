@@ -21,9 +21,10 @@ from svix.webhooks import Webhook
 from mailalias.config import Settings, get_settings
 from mailalias.mail.outbound import FakeMailer
 from mailalias.mail.types import MailKind, Outcome
-from mailalias.models import FailedDelivery, FailureKind, Recipient
+from mailalias.models import DeliveryLog, DeliveryStatus, FailedDelivery, FailureKind, Recipient
 from mailalias.security.crypto import lookup_hash
 from mailalias.services import mail_log
+from mailalias.services.users import UserService
 from tests.integration.harness import Harness, make_harness
 
 pytestmark = pytest.mark.usefixtures("dispatched", "relaxed_rate_limits")
@@ -244,3 +245,111 @@ async def test_failed_deliveries_api(client: httpx.AsyncClient, session: AsyncSe
     (entry,) = (await client.get("/api/v1/failed-deliveries")).json()
     assert entry["kind"] == "complaint"
     assert (entry["recipient_email"], entry["alias_address"]) == (OWNER, h.alias.address)
+
+
+async def _verified_inbox(session: AsyncSession, user_id: uuid.UUID, email: str) -> Recipient:
+    """Add a verified inbox to a user.
+
+    Args:
+        session: Test session.
+        user_id: Owner.
+        email: Address.
+    Returns:
+        The recipient.
+    """
+    recipient = Recipient(
+        user_id=user_id, email=email, email_hash=lookup_hash(email), verified_at=datetime.now(UTC)
+    )
+    session.add(recipient)
+    await session.flush()
+    return recipient
+
+
+async def _status(session: AsyncSession, provider_id: str) -> DeliveryStatus:
+    """Current status of one delivery row.
+
+    Args:
+        session: Test session.
+        provider_id: Provider id of the send.
+    Returns:
+        The status.
+    """
+    row = await session.scalar(
+        select(DeliveryLog)
+        .where(DeliveryLog.provider_id == provider_id)
+        .execution_options(populate_existing=True)
+    )
+    assert row is not None
+    return row.status
+
+
+@pytest.mark.usefixtures("hook_settings")
+async def test_bounce_on_the_second_inbox_is_matched_through_its_delivery(
+    client: httpx.AsyncClient, session: AsyncSession
+) -> None:
+    """Each send has its own provider id, so a bounce lands on exactly that inbox and send."""
+    h = await make_harness(session)
+    second = await _verified_inbox(session, h.user.id, "pia.second@example.org")
+    await mail_log.record(
+        session,
+        kind=MailKind.FORWARD,
+        outcome=Outcome.DELIVERED,
+        user_id=h.user.id,
+        alias_id=h.alias.id,
+        provider_id="p-first",
+        deliveries=[
+            mail_log.DeliveryRecord(h.user.default_recipient_id, "p-first"),
+            mail_log.DeliveryRecord(second.id, "p-second"),
+        ],
+    )
+    await session.commit()
+    response = await _post(client, _event("email.bounced", "p-second", "pia.second@example.org"))
+    assert response.json() == {"recorded": 1}
+    (failure,) = await _failures(session, h)
+    assert (failure.recipient_id, failure.alias_id) == (second.id, h.alias.id)
+    assert await _status(session, "p-second") == DeliveryStatus.BOUNCED
+    assert await _status(session, "p-first") == DeliveryStatus.SENT
+
+
+@pytest.mark.usefixtures("hook_settings")
+async def test_unknown_send_never_disables_an_inbox_in_any_subdomain(
+    client: httpx.AsyncClient, session: AsyncSession
+) -> None:
+    """With no matching send, the same address in two subdomains is never counted or disabled."""
+    h = await make_harness(session)
+    other = await UserService(session).create_user("quinn", "quinn@example.com", "x" * 12)
+    shared = "shared@example.org"
+    inboxes = [
+        await _verified_inbox(session, h.user.id, shared),
+        await _verified_inbox(session, other.id, shared),
+    ]
+    await session.commit()
+    for _ in range(3):
+        await _post(client, _event("email.bounced", f"res-{uuid.uuid4()}", shared))
+    for inbox in inboxes:
+        await session.refresh(inbox)
+        assert (inbox.consecutive_hard_bounces, inbox.disabled_at) == (0, None)
+    failures = (await session.scalars(select(FailedDelivery))).all()
+    assert len(failures) == 3
+    assert all(f.user_id is None and f.recipient_id is None for f in failures)
+
+
+@pytest.mark.usefixtures("hook_settings")
+async def test_delivered_event_updates_the_send_only(
+    client: httpx.AsyncClient, session: AsyncSession
+) -> None:
+    """email.delivered marks the send delivered and records no failure."""
+    h = await make_harness(session)
+    await mail_log.record(
+        session,
+        kind=MailKind.FORWARD,
+        outcome=Outcome.DELIVERED,
+        user_id=h.user.id,
+        alias_id=h.alias.id,
+        deliveries=[mail_log.DeliveryRecord(h.user.default_recipient_id, "p-ok")],
+    )
+    await session.commit()
+    response = await _post(client, _event("email.delivered", "p-ok", OWNER))
+    assert response.json() == {"recorded": 0}
+    assert await _status(session, "p-ok") == DeliveryStatus.DELIVERED
+    assert await _failures(session, h) == []

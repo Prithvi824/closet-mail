@@ -208,6 +208,7 @@ class AliasService:
         description: str | None = None,
         recipient_ids: Sequence[uuid.UUID] = (),
         label_ids: Sequence[uuid.UUID] = (),
+        enforce_rate: bool = True,
     ) -> Alias:
         """Create an alias, generated or custom.
 
@@ -219,6 +220,7 @@ class AliasService:
             description: Optional private note.
             recipient_ids: Recipients; empty means "the user's default recipient".
             label_ids: Labels to attach.
+            enforce_rate: Apply the hourly create limit (catch-all mail passes False).
         Returns:
             The created alias. Raises ValidationFailed, Conflict or QuotaExceeded.
         """
@@ -231,7 +233,8 @@ class AliasService:
                 raise ValidationFailed("Alias name is not allowed", code="invalid_local_part")
             if is_reserved_local_part(local_part):
                 raise ValidationFailed("Alias name is reserved", code="reserved_local_part")
-        await self._check_create_rate(user)
+        if enforce_rate:
+            await self._check_create_rate(user)
 
         attempts = 1 if local_part is not None else GENERATE_ATTEMPTS
         for _ in range(attempts):

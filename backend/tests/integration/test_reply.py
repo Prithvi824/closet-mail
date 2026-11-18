@@ -3,12 +3,13 @@
 # 3rd party imports
 import httpx
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # local imports
 from mailalias.config import get_settings
-from mailalias.mail.types import MailKind, Outcome
-from mailalias.models import Alias, Contact
+from mailalias.mail.types import InboundEnvelope, MailKind, Outcome
+from mailalias.models import Alias, Contact, DeliveryLog, UsageDaily
 from mailalias.services.aliases import AliasService
 from mailalias.services.contacts import ContactService
 from tests.integration.harness import Harness, mail_logs, make_harness
@@ -124,9 +125,10 @@ async def test_reply_disabled_and_deleted_alias(session: AsyncSession) -> None:
     _enqueue_reply(h, bob.token)
     await h.processor.run_once()
     assert h.mailer.sent == []
-    assert [log.reason for log in await mail_logs(session, h)] == [
-        "reply_disabled",
+    # Both rows share the test transaction's now(), so their created_at order is a tie.
+    assert sorted(log.reason or "" for log in await mail_logs(session, h)) == [
         "alias_deleted",
+        "reply_disabled",
     ]
 
 
@@ -192,3 +194,37 @@ async def test_contacts_api(client: httpx.AsyncClient, session: AsyncSession) ->
     assert blocked.json()["blocked"] is True
     own = await client.post(url, json={"email": "x@closetcompute.online"})
     assert own.status_code == 422
+
+
+async def test_delivered_reply_logs_one_delivery_and_its_sender(session: AsyncSession) -> None:
+    """A sent reply has one delivery row (no inbox) and its provider id; the inbox is the sender."""
+    h = await make_harness(session)
+    bob = await _contact(session, h.alias, "bob@example.net", "Bob")
+    _enqueue_reply(h, bob.token)
+    await h.processor.run_once()
+    (log,) = await mail_logs(session, h)
+    (row,) = (
+        await session.scalars(select(DeliveryLog).where(DeliveryLog.mail_log_id == log.id))
+    ).all()
+    assert (row.recipient_id, row.provider_id, row.user_id) == (None, "fake-1", h.user.id)
+    assert log.sender_domain == "example.com"
+
+
+async def test_redelivered_reply_is_not_counted_twice(session: AsyncSession) -> None:
+    """Processing the same reply again sends nothing and leaves the counters as they were."""
+    h = await make_harness(session)
+    bob = await _contact(session, h.alias, "bob@example.net", "Bob")
+    lease = _enqueue_reply(h, bob.token)
+    await h.processor.run_once()
+    first = h.inbox.raw["in/lease-0.eml"]
+    _enqueue_reply(h, bob.token)
+    h.inbox.envelopes[-1] = InboundEnvelope(
+        **{**h.inbox.envelopes[-1].__dict__, "lease_id": lease, "r2_key": "in/lease-0.eml"}
+    )
+    h.inbox.raw["in/lease-0.eml"] = first
+    await h.processor.run_once()
+    assert len(h.mailer.sent) == 1
+    usage = (await session.scalars(select(UsageDaily).where(UsageDaily.user_id == h.user.id))).one()
+    assert usage.replies == 1
+    await session.refresh(bob)
+    assert bob.replied_count == 1
