@@ -26,6 +26,8 @@ FORWARD_OUTCOME_COLUMNS = {
     Outcome.BLOCKED: "blocked",
     Outcome.DISCARDED: "discarded",
 }
+# Reason on a forward delivered after release from quarantine (it was counted when it arrived).
+RELEASED = "released"
 USAGE_COLUMNS = ("received", "forwards", "quarantined", "blocked", "discarded", "replies", "bytes")
 
 
@@ -80,17 +82,19 @@ async def _bump_counters(
         )
 
 
-def _usage_increments(kind: MailKind, outcome: Outcome, size_bytes: int) -> dict[str, int]:
+def _usage_increments(
+    kind: MailKind, outcome: Outcome, size_bytes: int, reason: str | None
+) -> dict[str, int]:
     """usage_daily increments for one handled message (empty when it is not counted).
 
     Args:
-        kind, outcome: What happened.
+        kind, outcome, reason: What happened (a release is not received a second time).
         size_bytes: Message size (counted only for delivered mail).
     Returns:
         Column name -> increment.
     """
     if kind == MailKind.FORWARD:
-        increments = {"received": 1}
+        increments = {} if reason == RELEASED else {"received": 1}
         column = FORWARD_OUTCOME_COLUMNS.get(outcome)
         if column:
             increments[column] = 1
@@ -196,7 +200,7 @@ async def record(
             contact_id=contact_id,
             now=now,
         )
-        increments = _usage_increments(kind, outcome, size_bytes)
+        increments = _usage_increments(kind, outcome, size_bytes, reason)
         if user_id is not None and increments:
             await _bump_usage(db, user_id, increments, received_at)
     await db.flush()

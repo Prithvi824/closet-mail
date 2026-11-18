@@ -2,6 +2,7 @@ import { Navigate, createBrowserRouter } from "react-router";
 
 import { AppLayout } from "@/app/AppLayout";
 import { RequireAuth } from "@/features/auth/RequireAuth";
+import { SubdomainScope } from "@/features/subdomains/SubdomainScope";
 import { LoginPage } from "@/pages/auth/LoginPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 
@@ -34,6 +35,7 @@ export const router = createBrowserRouter([
           },
           {
             path: "/s/:label",
+            element: <SubdomainScope />,
             children: [
               { index: true, element: <Navigate to="aliases" replace /> },
               {

@@ -229,3 +229,18 @@ class QuotaService:
             None.
         """
         await self.redis.decrby(share_key(user_id), cost)
+
+    async def consume_catchall(self, user_id: uuid.UUID, limits: Mapping[str, Any] | None) -> bool:
+        """Count one new catch-all alias against the subdomain's daily cap.
+
+        Args:
+            user_id: Subdomain id.
+            limits: The subdomain's `limits` JSON (catchall_creates_per_day overrides).
+        Returns:
+            True if another alias may be created today.
+        """
+        override = (limits or {}).get("catchall_creates_per_day")
+        limit = override if isinstance(override, int) and override > 0 else None
+        limit = limit or self.settings.subdomain_catchall_creates_per_day
+        key = f"q:catchall:{user_id}:{datetime.now(UTC):%Y%m%d}"
+        return await self._consume(key, limit, 1, DAY_TTL_SECONDS)

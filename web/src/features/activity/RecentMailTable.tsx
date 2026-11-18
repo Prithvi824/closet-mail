@@ -53,6 +53,8 @@ const REASON_LABELS: Record<string, string> = {
   hard: "hard bounce",
   soft: "soft bounce",
   delayed: "delayed",
+  catchall_limit: "catch-all limit",
+  released: "released from quarantine",
 };
 
 interface DestinationsProps {
@@ -66,7 +68,7 @@ function Destinations({ row }: DestinationsProps) {
     <ul className="flex flex-col gap-1">
       {row.destinations.map((destination, index) => (
         <li key={`${destination.inbox ?? "reply"}-${index}`} className="flex items-center gap-2">
-          <span className="truncate">{destination.inbox ?? "correspondent"}</span>
+          <span className="truncate">{destination.inbox ?? "removed inbox"}</span>
           <Badge variant={DELIVERY_VARIANTS[destination.status]}>{destination.status}</Badge>
         </li>
       ))}

@@ -34,7 +34,7 @@ from mailalias.services import mail_log
 from mailalias.services.aliases import AliasService
 from mailalias.services.blocklist import BlocklistService
 from mailalias.services.contacts import ContactService
-from mailalias.services.mail_log import DeliveryRecord
+from mailalias.services.mail_log import RELEASED, DeliveryRecord
 from mailalias.services.notices import operator_addresses, send_notice
 from mailalias.services.quarantine import QuarantineService, subject_of
 from mailalias.services.quota import QuotaService, cap_retry_delay
@@ -86,6 +86,7 @@ class Delivery:
     name: str | None
     spam_score: float | None
     spam_unchecked: bool  # Rspamd was unavailable: add a notice header
+    released: bool = False  # released from quarantine: already counted as received
 
 
 class ForwardHandler:
@@ -242,24 +243,28 @@ class ForwardHandler:
             return None
         return await self.db.scalar(select(User).where(User.username == label))
 
-    async def _resolve_alias(self, address: str) -> Alias | None:
-        """Load the alias, auto-creating it on a personal subdomain with catch-all on.
+    async def _resolve_alias(self, address: str) -> tuple[Alias | None, str]:
+        """Load the alias, auto-creating it on a subdomain with catch-all on (capped per day).
 
         Args:
             address: Normalised recipient address.
         Returns:
-            The alias with recipients loaded, or None.
+            (alias with recipients loaded, or None; drop reason when None).
         """
         query = (
             select(Alias).options(selectinload(Alias.recipients)).where(Alias.address == address)
         )
         alias = await self.db.scalar(query)
         if alias is not None:
-            return alias
+            return alias, ""
         local, domain = split_address(address)
         owner = await self._subdomain_owner(domain)
         if owner is None or not owner.subdomain_catchall or owner.disabled_at is not None:
-            return None
+            return None, "unknown_alias"
+        # A daily cap (not the hourly UI limit) keeps a spam run from flooding alias rows and KV.
+        if not await self.quota.consume_catchall(owner.id, owner.limits):
+            await self._notify_catchall_limit(owner)
+            return None, "catchall_limit"
         try:
             # Catch-all creation follows incoming mail, so the hourly create limit does not apply.
             await AliasService(self.db, self.settings, self.redis).create(
@@ -270,9 +275,9 @@ class ForwardHandler:
             pass
         except DomainError as exc:
             logger.info("catch-all alias not created", extra={"code": exc.code})
-            return None
+            return None, "unknown_alias"
         await self.db.commit()
-        return await self.db.scalar(query.execution_options(populate_existing=True))
+        return await self.db.scalar(query.execution_options(populate_existing=True)), ""
 
     async def _recipients(self, alias: Alias, owner: User) -> list[Recipient]:
         """Usable recipients of the alias, falling back to all of the owner's default inboxes.
@@ -370,6 +375,28 @@ class ForwardHandler:
             ),
         )
 
+    async def _notify_catchall_limit(self, owner: User) -> None:
+        """Tell the operator (at most once a day per subdomain) that catch-all mail is dropped.
+
+        Args:
+            owner: The subdomain.
+        Returns:
+            None.
+        """
+        await send_notice(
+            self.redis,
+            self.system_mail,
+            await operator_addresses(self.db),
+            throttle_key=f"catchall:{owner.id}:{datetime.now(UTC):%Y%m%d}",
+            ttl_seconds=QUOTA_NOTICE_TTL_SECONDS,
+            subject=f"Catch-all limit reached for {owner.username}",
+            body=(
+                f"{owner.username} received mail for more new addresses today than its catch-all "
+                "limit allows, so mail to further new addresses is dropped until midnight UTC. "
+                "This usually means a spam run; raise the limit in its settings if it is real mail."
+            ),
+        )
+
     async def _refund(self, owner_id: uuid.UUID, cost: int) -> None:
         """Give back every quota a send consumed when it did not happen.
 
@@ -401,7 +428,7 @@ class ForwardHandler:
             HandlerResult. Raises RetryableError for infrastructure problems or the global cap.
         """
         address, name = sender_of(env, msg)
-        alias = await self._resolve_alias(normalize(env.rcpt_to))
+        alias, drop_reason = await self._resolve_alias(normalize(env.rcpt_to))
         if alias is None or alias.user_id is None:
             # Attribute drops on a known subdomain to it, so its metrics show the lost mail.
             owner = (
@@ -411,7 +438,7 @@ class ForwardHandler:
             )
             return await self._log(
                 Outcome.DISCARDED,
-                "unknown_alias",
+                drop_reason or "unknown_alias",
                 env,
                 alias,
                 sender=address,
@@ -452,7 +479,9 @@ class ForwardHandler:
             held = await self._screen(env, msg, raw, alias, contact, score, address)
             if held is not None:
                 return held
-        delivery = Delivery(alias, owner, contact, recipients, address, name, score, unchecked)
+        delivery = Delivery(
+            alias, owner, contact, recipients, address, name, score, unchecked, skip_spam
+        )
         return await self._deliver(env, msg, delivery)
 
     async def _deliver(
@@ -545,7 +574,7 @@ class ForwardHandler:
         # cost == 0: every inbox got it on an earlier attempt, which was already counted.
         return await self._log(
             Outcome.DELIVERED,
-            None,
+            RELEASED if delivery.released else None,
             env,
             alias,
             contact,

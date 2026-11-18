@@ -33,7 +33,9 @@ from mailalias.services.recipients import RecipientService
 from mailalias.services.system_mail import SystemMailService
 
 # users.limits keys the operator may override per subdomain.
-SUBDOMAIN_LIMIT_KEYS = frozenset({"forwards_per_hour", "replies_per_day", "sends_per_day"})
+SUBDOMAIN_LIMIT_KEYS = frozenset(
+    {"forwards_per_hour", "replies_per_day", "sends_per_day", "catchall_creates_per_day"}
+)
 
 
 def _clean(value: str | None) -> str | None:

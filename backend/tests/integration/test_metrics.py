@@ -185,3 +185,29 @@ async def test_windows_are_validated(client: httpx.AsyncClient, session: AsyncSe
         assert (
             await client.get(sub("acme", "/activity"), params={"days": days})
         ).status_code == 422
+
+
+async def test_reply_rows_name_the_correspondent_as_the_destination(
+    client: httpx.AsyncClient, session: AsyncSession
+) -> None:
+    """A sent reply is not shown as coming from the correspondent; it went to them."""
+    await _seed(session, client)
+    acme = await UserService(session).get_by_username("acme")
+    assert acme is not None
+    alias = (await AliasService(session, get_settings()).list(acme, page=1, per_page=5))[0][0]
+    bob = await ContactService(session).get_or_create(alias, "bob@shop.example", None)
+    await mail_log.record(
+        session,
+        kind=MailKind.REPLY,
+        outcome=Outcome.DELIVERED,
+        user_id=acme.id,
+        alias_id=alias.id,
+        contact_id=bob.id,
+        sender_address="acme@example.com",
+        deliveries=[mail_log.DeliveryRecord(None, "p-reply")],
+    )
+    await session.commit()
+    body = (await client.get(sub("acme", "/activity"))).json()
+    reply = next(event for event in body["recent"] if event["kind"] == "reply")
+    assert reply["sender"] is None and reply["sender_domain"] == "example.com"
+    assert reply["destinations"] == [{"inbox": "bob@shop.example", "status": "sent"}]

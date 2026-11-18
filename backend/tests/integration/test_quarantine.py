@@ -20,7 +20,7 @@ from mailalias.mail.handlers.forward import ForwardHandler
 from mailalias.mail.processor import parse_message
 from mailalias.mail.transform.headers import NOTICE_HEADER
 from mailalias.mail.types import HandlerResult, InboundEnvelope, Outcome
-from mailalias.models import AliasState, QuarantineItem
+from mailalias.models import AliasState, QuarantineItem, UsageDaily
 from mailalias.security.crypto import decrypt_bytes
 from mailalias.services.quarantine import RELEASE_TASK, QuarantineService
 from mailalias.services.system_mail import SystemMailService
@@ -164,6 +164,21 @@ async def test_release_delivers_once_and_keeps_copy_when_alias_inactive(
     assert item.released_at is not None and h.store.objects == {}
     assert await _release(session, h, item) is None
     assert len(h.mailer.sent) == 1 and h.spam.calls == [h.spam.calls[0]]
+
+
+async def test_released_mail_counts_as_received_once(session: AsyncSession) -> None:
+    """A released held message counts once as received, once quarantined, once delivered."""
+    h = await make_harness(session)
+    h.spam.score = 8.0
+    h.enqueue("real_inbound_gmail.eml")
+    await h.processor.run_once()
+    (item,) = await _items(session, h)
+    assert (await _release(session, h, item)).outcome == Outcome.DELIVERED  # type: ignore[union-attr]
+    rows = (await session.scalars(select(UsageDaily).where(UsageDaily.user_id == h.user.id))).all()
+    columns = ("received", "quarantined", "forwards")
+    assert tuple(sum(getattr(row, column) for row in rows) for column in columns) == (1, 1, 1)
+    reasons = sorted(log.reason or "" for log in await mail_logs(session, h))
+    assert reasons == ["released", "spam"]
 
 
 @pytest.mark.usefixtures("relaxed_rate_limits")

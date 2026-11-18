@@ -93,6 +93,20 @@ Rollback: `deploy/scripts/deploy.sh <previous sha>`. Migrations up to 0005 are a
 - **0006** drops `users.default_recipient_id` and the `invites` table. Deploy it only after 0004 has been running for at least a day, so no container still reads the old column.
 - **Downgrading below 0005** refuses while any subdomain has no email or password (subdomains created in the app have neither).
 
+## Rolling out the operator release (migrations 0003–0006)
+
+This release turns accounts into subdomains, and its last migration (0006) drops `users.default_recipient_id`. `deploy.sh` runs `migrate` while the old containers are still up, and the old code still loads that column, so they would fail until they are replaced. Stop them first. While they are stopped, mail waits in the Cloudflare queue.
+
+1. Take a backup: `cd ~/mail-alias && docker compose exec worker celery -A mailalias.tasks.celery_app call maintenance.backup`, or check that last night's backup exists in R2.
+2. Stop the app containers on the host (the worker also runs beat): `cd ~/mail-alias && docker compose stop api processor worker`.
+3. From your machine: `deploy/scripts/deploy.sh`. It applies 0003–0006, then starts the new containers.
+4. In Resend, add the `email.delivered` event to the webhook (see above).
+5. Sign in. On **Subdomains**, check that `prithvi` (you) and every former account appear with their aliases, then press **Check now** on each.
+6. Former accounts can no longer sign in, but API tokens they created still work inside their own subdomain. For each one, open `/s/<label>/tokens` and revoke tokens you don't want to keep.
+7. Send one test mail per subdomain and confirm it shows on that subdomain's **Activity** page.
+
+Later contract migrations should drop a column one release after the code stops mapping it, so no stop is needed.
+
 ## Edge Worker
 
 The Worker is deployed from a workstation, not CI, so the Cloudflare token stays off GitHub:
@@ -134,6 +148,8 @@ Each person served gets a subdomain `<label>.closetcompute.online`. The label ca
 Statuses: **Ready**, **DNS missing** (step 2 not done), **No inbox** (no verified default inbox), **Suspended**, **Retired**, **Not checked** (Cloudflare could not be read).
 
 **Send share.** Each subdomain may send `SUBDOMAIN_SENDS_PER_DAY` messages a day (default 40; forwards and replies, one per inbox) out of the global `OUTBOUND_DAILY_CAP`. Change it per subdomain in its detail sheet ("Sends per day"). Over its share, the subdomain's mail waits in the queue until midnight UTC, and the operator is emailed once.
+
+**Catch-all limit.** A subdomain can create at most `SUBDOMAIN_CATCHALL_CREATES_PER_DAY` new catch-all aliases a day (default 200; "New catch-all addresses per day" in its sheet). This stops a spam run from filling the alias table and the KV write budget. Mail to further new addresses is dropped as "catch-all limit", and the operator is emailed once that day.
 
 **Suspend and retire.** Suspending stops forwarding and removes the edge catch-all flag until resumed. Retiring forgets every alias (the addresses stay reserved, and the edge rejects them), disables the inboxes and keeps all history. Your own subdomain can't be suspended or retired.
 

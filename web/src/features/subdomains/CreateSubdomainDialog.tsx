@@ -84,7 +84,7 @@ export function CreateSubdomainDialog({ open, onOpenChange }: CreateSubdomainDia
           <>
             <DialogHeader>
               <DialogTitle>{created.label} created</DialogTitle>
-              <DialogDescription>Two steps are left before mail flows.</DialogDescription>
+              <DialogDescription>A few steps are left before mail flows.</DialogDescription>
             </DialogHeader>
             <SetupSteps created={created} inbox={inbox.trim()} />
             <DialogFooter>

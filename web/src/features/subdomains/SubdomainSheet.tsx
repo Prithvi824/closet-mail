@@ -20,6 +20,7 @@ const LIMIT_FIELDS = [
   { key: "sends_per_day", label: "Sends per day (share of the send cap)" },
   { key: "forwards_per_hour", label: "Forwards per hour" },
   { key: "replies_per_day", label: "Replies per day" },
+  { key: "catchall_creates_per_day", label: "New catch-all addresses per day" },
 ] as const;
 
 type Confirming = "suspend" | "retire" | null;

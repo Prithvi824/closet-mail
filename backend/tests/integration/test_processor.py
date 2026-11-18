@@ -419,3 +419,21 @@ async def test_send_share_is_spent_by_delivered_mail(session: AsyncSession) -> N
     h.enqueue("fwd_alternative.eml")
     await h.processor.run_once()
     assert int(await get_redis().get(share_key(h.user.id)) or 0) == 1
+
+
+async def test_catchall_creation_is_capped_per_day_and_reported(session: AsyncSession) -> None:
+    """Past the daily catch-all cap new addresses are dropped, logged to the subdomain, reported."""
+    h = await make_harness(session)
+    await _served(session, h)
+    h.user.subdomain_catchall = True
+    h.user.limits = {"catchall_creates_per_day": 2}
+    await session.commit()
+    for index in range(3):
+        h.enqueue("fwd_alternative.eml", rcpt_to=f"capped{index}@pia.closetcompute.online")
+    await _drain(h)
+    created = (await session.scalars(select(Alias).where(Alias.local_part.like("capped%")))).all()
+    assert len(created) == 2
+    reasons = [log.reason for log in await mail_logs(session, h)]
+    assert reasons.count("catchall_limit") == 1
+    notices = [m for m in h.notices.sent if "catch-all" in str(m.message["Subject"]).lower()]
+    assert [m.rcpt_to for m in notices] == [["boss@example.com"]]

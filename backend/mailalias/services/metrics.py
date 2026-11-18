@@ -328,26 +328,46 @@ async def _recent(
             .order_by(DeliveryLog.created_at)
         )
         for delivery, email in deliveries.all():
+            # A forward's copy went to an inbox (None once that inbox is deleted).
             destinations.setdefault(delivery.mail_log_id, []).append(
                 Destination(inbox=email, status=delivery.status)
             )
-    events = [
-        MailEvent(
-            id=log.id,
-            received_at=log.received_at or log.created_at,
-            kind=log.kind,
-            outcome=log.outcome,
-            reason=log.reason,
-            alias_address=address,
-            sender=contact.sender_email if contact is not None else None,
-            sender_domain=log.sender_domain,
-            destinations=destinations.get(log.id, []),
-            spam_score=log.spam_score,
-            size_bytes=log.size_bytes,
-        )
-        for log, address, contact in rows
-    ]
-    return events, has_more
+    return [_event(log, address, contact, destinations) for log, address, contact in rows], has_more
+
+
+def _event(
+    log: MailLog,
+    address: str | None,
+    contact: Contact | None,
+    destinations: dict[uuid.UUID, list[Destination]],
+) -> MailEvent:
+    """One recent-mail row; for a reply the contact is the destination, not the sender.
+
+    Args:
+        log, address, contact: The mail_log row, its alias address and its contact.
+        destinations: Delivery rows by mail_log id.
+    Returns:
+        The event.
+    """
+    correspondent = contact.sender_email if contact is not None else None
+    sent = destinations.get(log.id, [])
+    if log.kind == MailKind.REPLY:
+        # A reply comes from the person's inbox (only its domain is kept) and goes to the contact.
+        sent = [Destination(inbox=correspondent, status=item.status) for item in sent]
+        correspondent = None
+    return MailEvent(
+        id=log.id,
+        received_at=log.received_at or log.created_at,
+        kind=log.kind,
+        outcome=log.outcome,
+        reason=log.reason,
+        alias_address=address,
+        sender=correspondent,
+        sender_domain=log.sender_domain,
+        destinations=sent,
+        spam_score=log.spam_score,
+        size_bytes=log.size_bytes,
+    )
 
 
 async def subdomain_activity(
