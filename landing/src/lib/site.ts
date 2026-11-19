@@ -5,5 +5,5 @@ export const SITE = {
   domain: "closetcompute.online",
   appUrl: "https://app.closetcompute.online",
   repoUrl: "https://github.com/Prithvi824/closet-mail",
-  inviteEmail: "invite@prithvi.closetcompute.online",
+  contactEmail: "invite@prithvi.closetcompute.online",
 } as const;

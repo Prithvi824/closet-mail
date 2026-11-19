@@ -7,7 +7,7 @@ import uuid
 from fastapi import APIRouter, Depends, status
 
 # local imports
-from mailalias.api.deps import CurrentUser, DbSession, token_scopes
+from mailalias.api.deps import CurrentSubdomain, DbSession, token_scopes
 from mailalias.schemas.labels import LabelCreate, LabelResponse, LabelUpdate
 from mailalias.services.labels import LabelService
 
@@ -19,7 +19,7 @@ router = APIRouter(
 
 
 @router.get("")
-async def list_labels(user: CurrentUser, db: DbSession) -> list[LabelResponse]:
+async def list_labels(user: CurrentSubdomain, db: DbSession) -> list[LabelResponse]:
     """List the user's labels.
 
     Args:
@@ -32,7 +32,7 @@ async def list_labels(user: CurrentUser, db: DbSession) -> list[LabelResponse]:
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
-async def create_label(body: LabelCreate, user: CurrentUser, db: DbSession) -> LabelResponse:
+async def create_label(body: LabelCreate, user: CurrentSubdomain, db: DbSession) -> LabelResponse:
     """Create a label.
 
     Args:
@@ -49,7 +49,7 @@ async def create_label(body: LabelCreate, user: CurrentUser, db: DbSession) -> L
 
 @router.patch("/{label_id}")
 async def update_label(
-    label_id: uuid.UUID, body: LabelUpdate, user: CurrentUser, db: DbSession
+    label_id: uuid.UUID, body: LabelUpdate, user: CurrentSubdomain, db: DbSession
 ) -> LabelResponse:
     """Rename or recolour a label.
 
@@ -67,7 +67,7 @@ async def update_label(
 
 
 @router.delete("/{label_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_label(label_id: uuid.UUID, user: CurrentUser, db: DbSession) -> None:
+async def delete_label(label_id: uuid.UUID, user: CurrentSubdomain, db: DbSession) -> None:
     """Delete a label.
 
     Args:

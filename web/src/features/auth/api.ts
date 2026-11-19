@@ -11,12 +11,6 @@ export interface Credentials {
   password: string;
 }
 
-export interface InviteAcceptInput {
-  token: string;
-  username: string;
-  password: string;
-}
-
 /** The signed-in user; errors with 401 when there is no (fully authenticated) session. */
 export function useMe() {
   return useQuery({
@@ -67,28 +61,5 @@ export function useLogout() {
       await http.post("/auth/logout");
     },
     onSettled: () => queryClient.clear(),
-  });
-}
-
-export function useAcceptInvite() {
-  return useMutation({
-    mutationFn: async (input: InviteAcceptInput) =>
-      (await http.post<{ username: string }>("/auth/invite/accept", input)).data,
-  });
-}
-
-export function useRequestReset() {
-  return useMutation({
-    mutationFn: async (email: string) => {
-      await http.post("/auth/password-reset/request", { email });
-    },
-  });
-}
-
-export function useConfirmReset() {
-  return useMutation({
-    mutationFn: async (input: { token: string; password: string }) => {
-      await http.post("/auth/password-reset/confirm", input);
-    },
   });
 }

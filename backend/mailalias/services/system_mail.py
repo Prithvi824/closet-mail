@@ -1,4 +1,4 @@
-"""System emails (invites, verification, password reset, notices) built from templates."""
+"""System emails (inbox verification and notices) built from templates."""
 
 # 1st party imports
 from email.message import EmailMessage
@@ -12,27 +12,12 @@ from mailalias.mail.outbound import OutboundMailer
 _FOOTER = "\n--\nclosetcompute.online mail aliases\n"
 
 _TEMPLATES: dict[str, tuple[str, Template]] = {
-    "invite": (
-        "You're invited to closetcompute.online mail aliases",
-        Template(
-            "You have been invited to create an account.\n\n"
-            "Accept the invite (valid for 7 days):\n$link\n"
-        ),
-    ),
     "verify_recipient": (
         "Confirm your forwarding address",
         Template(
             "Someone (hopefully you) added this address as a forwarding destination.\n\n"
             "Confirm it (valid for 48 hours):\n$link\n\n"
             "If this wasn't you, ignore this email.\n"
-        ),
-    ),
-    "password_reset": (
-        "Reset your password",
-        Template(
-            "A password reset was requested for your account.\n\n"
-            "Choose a new password (valid for 1 hour):\n$link\n\n"
-            "If this wasn't you, ignore this email; your password is unchanged.\n"
         ),
     ),
     "notice": ("$subject", Template("$body\n")),
@@ -68,7 +53,7 @@ class SystemMailService:
         """Render a template into a plain-text message.
 
         Args:
-            template: Template name (invite, verify_recipient, password_reset, notice).
+            template: Template name (verify_recipient, notice).
             to: Recipient address.
             values: Template variables (link, subject, body).
         Returns:

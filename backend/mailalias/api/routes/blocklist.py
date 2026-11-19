@@ -7,7 +7,7 @@ import uuid
 from fastapi import APIRouter, Response, status
 
 # local imports
-from mailalias.api.deps import CurrentUser, DbSession
+from mailalias.api.deps import CurrentSubdomain, DbSession
 from mailalias.schemas.blocklist import BlocklistCreate, BlocklistResponse
 from mailalias.services.blocklist import BlocklistService
 
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/blocklist", tags=["blocklist"])
 
 
 @router.get("")
-async def list_blocklist(user: CurrentUser, db: DbSession) -> list[BlocklistResponse]:
+async def list_blocklist(user: CurrentSubdomain, db: DbSession) -> list[BlocklistResponse]:
     """List blocked senders.
 
     Args:
@@ -28,7 +28,7 @@ async def list_blocklist(user: CurrentUser, db: DbSession) -> list[BlocklistResp
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def add_blocklist(
-    body: BlocklistCreate, user: CurrentUser, db: DbSession
+    body: BlocklistCreate, user: CurrentSubdomain, db: DbSession
 ) -> BlocklistResponse:
     """Block an address or domain.
 
@@ -44,7 +44,7 @@ async def add_blocklist(
 
 
 @router.delete("/{entry_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_blocklist(entry_id: uuid.UUID, user: CurrentUser, db: DbSession) -> Response:
+async def delete_blocklist(entry_id: uuid.UUID, user: CurrentSubdomain, db: DbSession) -> Response:
     """Unblock.
 
     Args:

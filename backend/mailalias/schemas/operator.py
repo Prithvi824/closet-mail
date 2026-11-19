@@ -1,7 +1,6 @@
-"""Request/response models for the admin console."""
+"""Request/response models for the operator console (health, DLQ)."""
 
 # 1st party imports
-import uuid
 from datetime import datetime
 from typing import Any
 
@@ -9,52 +8,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 # local imports
-from mailalias.models import UserRole
-from mailalias.services.admin import DlqItem, Health, UserSummary
-
-
-class AdminUserResponse(BaseModel):
-    """A user as seen by an admin."""
-
-    id: uuid.UUID
-    username: str
-    email: str
-    role: UserRole
-    disabled: bool
-    totp_enabled: bool
-    limits: dict[str, int] | None
-    alias_count: int
-    created_at: datetime
-
-    @classmethod
-    def build(cls, summary: UserSummary) -> "AdminUserResponse":
-        """Build from a service summary.
-
-        Args:
-            summary: User and alias count.
-        Returns:
-            The response model.
-        """
-        user = summary.user
-        return cls(
-            id=user.id,
-            username=user.username,
-            email=user.email,
-            role=user.role,
-            disabled=user.disabled_at is not None,
-            totp_enabled=user.totp_enabled,
-            limits=user.limits,
-            alias_count=summary.alias_count,
-            created_at=user.created_at,
-        )
-
-
-class AdminUserUpdate(BaseModel):
-    """Partial update; `limits: null` resets to the defaults."""
-
-    disabled: bool | None = None
-    role: UserRole | None = None
-    limits: dict[str, int] | None = Field(default=None)
+from mailalias.services.operator import DlqItem, Health
 
 
 class HealthResponse(BaseModel):

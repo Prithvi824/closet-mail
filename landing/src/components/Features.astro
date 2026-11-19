@@ -81,7 +81,7 @@ const heldBars = new Set([3, 4, 5]);
       <MagicCard client:visible className={`${tile} sm:col-span-6 lg:col-span-2`}>
         <span class="tag">Sign-in</span>
         <h3>Passkeys and authenticator codes</h3>
-        <p>Accounts are invite only. Add a passkey or a TOTP app, with backup codes for a bad day.</p>
+        <p>Only the operator signs in, with a passkey or a TOTP app and backup codes for a bad day.</p>
         <div class={`${art} flex flex-wrap gap-2`} aria-hidden="true">
           {
             ["Passkey", "TOTP", "Backup codes"].map((key) => (

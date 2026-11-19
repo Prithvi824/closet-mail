@@ -24,6 +24,7 @@ _TEST_ENV = {
     # Blank every real credential so no test can reach Cloudflare, R2 or Resend.
     "CF_API_TOKEN": "",
     "CF_ACCOUNT_ID": "test-account",
+    "CF_ZONE_ID": "",
     "CF_KV_NAMESPACE_ID": "test-kv",
     "CF_QUEUE_ID_INBOUND": "test-queue",
     "CF_QUEUE_ID_DLQ": "test-dlq",

@@ -6,7 +6,6 @@ import os
 import stat
 import subprocess
 import tempfile
-import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -23,18 +22,20 @@ from mailalias.mail.outbound import FakeMailer
 from mailalias.mail.processor import HEARTBEAT_KEY
 from mailalias.mail.types import MailKind, Outcome
 from mailalias.models import (
+    DeliveryLog,
     FailedDelivery,
     FailureKind,
-    Invite,
     MailLog,
     QuarantineItem,
     Recipient,
+    SubdomainState,
+    SubdomainStatus,
     UserRole,
 )
 from mailalias.security.crypto import lookup_hash
 from mailalias.services.backup import BackupError, backup_key, pg_environment, run_backup
 from mailalias.services.monitor import collect_alerts, send_alerts
-from mailalias.services.quota import global_key
+from mailalias.services.quota import global_key, share_key
 from mailalias.services.retention import run_retention
 from mailalias.services.system_mail import SystemMailService
 from mailalias.services.users import UserService
@@ -45,7 +46,7 @@ NOW = datetime.now(UTC)
 
 
 async def test_retention_rules(session: AsyncSession) -> None:
-    """Old logs/failures, expired or released quarantine, expired invites and stale tokens go."""
+    """Old logs/failures, expired or released quarantine and stale verify tokens go."""
     h = await make_harness(session)
     store = FakeStore({"quarantine/old.bin": b"x", "quarantine/new.bin": b"y"})
     common = {"user_id": h.user.id, "alias_id": h.alias.id, "sender": "a@b.c", "spam_score": 9.0}
@@ -61,26 +62,13 @@ async def test_retention_rules(session: AsyncSession) -> None:
                 user_id=h.user.id,
                 kind=MailKind.FORWARD,
                 outcome=Outcome.DELIVERED,
-                created_at=NOW - timedelta(days=31),
+                created_at=NOW - timedelta(days=91),
             ),
             MailLog(user_id=h.user.id, kind=MailKind.FORWARD, outcome=Outcome.DELIVERED),
             FailedDelivery(
                 user_id=h.user.id, kind=FailureKind.SOFT, created_at=NOW - timedelta(days=91)
             ),
             FailedDelivery(user_id=h.user.id, kind=FailureKind.SOFT),
-            Invite(
-                email="x@example.org",
-                email_hash=lookup_hash("x@example.org"),
-                token_hash=uuid.uuid4().hex,
-                expires_at=NOW - timedelta(days=1),
-            ),
-            Invite(
-                email="y@example.org",
-                email_hash=lookup_hash("y@example.org"),
-                token_hash=uuid.uuid4().hex,
-                expires_at=NOW - timedelta(days=1),
-                used_at=NOW,
-            ),
             Recipient(
                 user_id=h.user.id,
                 email="v@example.org",
@@ -94,13 +82,38 @@ async def test_retention_rules(session: AsyncSession) -> None:
     result = await run_retention(session, store)
     await session.commit()
     assert (result.quarantine, result.mail_log, result.failed_deliveries) == (1, 1, 1)
-    assert (result.invites, result.verify_tokens) == (1, 1)
+    assert result.verify_tokens == 1
     assert set(store.objects) == {"quarantine/new.bin"}
     assert (
         len((await session.scalars(select(MailLog).where(MailLog.user_id == h.user.id))).all()) == 1
     )
     again = await run_retention(session, store)
     assert sum(vars(again).values()) == 0
+
+
+async def test_mail_log_and_its_deliveries_are_kept_for_90_days(session: AsyncSession) -> None:
+    """An 89-day-old message stays with its deliveries; a 91-day-old one goes with its own."""
+    h = await make_harness(session)
+    logs = {}
+    for age in (89, 91):
+        log = MailLog(
+            user_id=h.user.id,
+            kind=MailKind.FORWARD,
+            outcome=Outcome.DELIVERED,
+            created_at=NOW - timedelta(days=age),
+        )
+        session.add(log)
+        await session.flush()
+        session.add(DeliveryLog(mail_log_id=log.id, user_id=h.user.id, provider_id=f"p-{age}"))
+        logs[age] = log.id
+    await session.commit()
+    await run_retention(session, FakeStore())
+    await session.commit()
+    kept = (await session.scalars(select(DeliveryLog.provider_id))).all()
+    assert kept == ["p-89"]
+    assert await session.get(MailLog, logs[89]) is not None
+    session.expunge_all()
+    assert await session.get(MailLog, logs[91]) is None
 
 
 async def test_monitor_alerts_and_dedup(session: AsyncSession) -> None:
@@ -121,7 +134,45 @@ async def test_monitor_alerts_and_dedup(session: AsyncSession) -> None:
     mailer = FakeMailer()
     mail = SystemMailService(mailer, settings)
     assert await send_alerts(session, redis, mail, alerts) == 4
-    assert {m.rcpt_to[0] for m in mailer.sent} == {admin.email}
+    # The harness user is an operator too, so both admins get the alerts.
+    assert {m.rcpt_to[0] for m in mailer.sent} == {admin.email, h.user.email}
+    assert await send_alerts(session, redis, mail, alerts) == 0
+
+
+async def test_subdomain_alerts_once_per_subdomain_and_problem(session: AsyncSession) -> None:
+    """DNS missing, no inbox and a used-up share alert per live subdomain; repeats are held."""
+    operator = await UserService(session).create_user(
+        "boss", "boss@example.com", "x" * 12, UserRole.ADMIN
+    )
+    users = {}
+    for label in ("acme", "beta", "gamma", "delta", "omega"):
+        users[label] = await UserService(session).create_user(
+            label, f"{label}@example.com", "x" * 12
+        )
+    states = {
+        "acme": SubdomainState.DNS_MISSING,
+        "beta": SubdomainState.NO_INBOX,
+        "delta": SubdomainState.DNS_MISSING,
+        "omega": SubdomainState.DNS_MISSING,
+    }
+    for label, state in states.items():
+        session.add(SubdomainStatus(user_id=users[label].id, state=state, checked_at=NOW))
+    users["delta"].disabled_at = NOW
+    users["omega"].retired_at = NOW
+    await session.commit()
+    redis = get_redis()
+    await redis.set(HEARTBEAT_KEY, NOW.isoformat())
+    await redis.set(share_key(users["gamma"].id), get_settings().subdomain_sends_per_day)
+    alerts = await collect_alerts(session, get_settings(), redis, FakeQueues())  # type: ignore[arg-type]
+    assert {a.key for a in alerts} == {
+        "sub:acme:dns_missing",
+        "sub:beta:no_inbox",
+        "sub:gamma:share",
+    }
+    mailer = FakeMailer()
+    mail = SystemMailService(mailer, get_settings())
+    assert await send_alerts(session, redis, mail, alerts) == 3
+    assert {m.rcpt_to[0] for m in mailer.sent} == {operator.email}
     assert await send_alerts(session, redis, mail, alerts) == 0
 
 

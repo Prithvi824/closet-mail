@@ -1,7 +1,6 @@
-"""End-to-end account flows: invites, login, TOTP, backup codes, password reset, CLI."""
+"""Operator account flows: login, TOTP, backup codes, operator-only access, CLI."""
 
 # 1st party imports
-import re
 import secrets
 from urllib.parse import parse_qs, urlparse
 
@@ -15,27 +14,14 @@ from typer.testing import CliRunner
 
 # local imports
 from mailalias.cli import app as cli_app
-from mailalias.mail.outbound import FakeMailer
+from mailalias.db import get_redis
 from mailalias.models import Recipient, User, UserRole
+from mailalias.security.sessions import SESSION_COOKIE, SessionStore
 from mailalias.services.users import MFA_MAX_FAILURES, UserService
+from tests.integration.harness import default_inbox
 
 pytestmark = pytest.mark.usefixtures("relaxed_rate_limits")
 PASSWORD = "correct horse battery"
-
-
-def _link_token(mailer: FakeMailer, path: str) -> str:
-    """Extract the token from the last emailed link of the form /<path>/<token>.
-
-    Args:
-        mailer: Fake mailer holding sent messages.
-        path: Link path segment, e.g. "invite".
-    Returns:
-        The token.
-    """
-    body = mailer.sent[-1].message.get_content()
-    match = re.search(rf"/{path}/([A-Za-z0-9_-]+)", body)
-    assert match, "link not found in email"
-    return match.group(1)
 
 
 async def _make_admin(session: AsyncSession) -> User:
@@ -70,46 +56,22 @@ async def _login(client: httpx.AsyncClient, username: str, password: str = PASSW
     return bool(response.json()["mfa_required"])
 
 
-async def test_invite_login_totp_logout_cycle(
-    client: httpx.AsyncClient, session: AsyncSession, mailer: FakeMailer
-) -> None:
-    """Admin invites, invitee signs up, enables TOTP, and later needs TOTP to log in.
+async def test_login_totp_logout_cycle(client: httpx.AsyncClient, session: AsyncSession) -> None:
+    """The operator signs in, enables TOTP, and later needs TOTP to sign in.
 
     Args:
         client: HTTP client.
         session: Test session.
-        mailer: Fake mailer.
     Returns:
         None.
     """
-    await _make_admin(session)
+    admin = await _make_admin(session)
+    recipient = await default_inbox(session, admin)
+    assert recipient.is_usable and recipient.forward_by_default
+
     assert await _login(client, "boss") is False
-
-    created = await client.post("/api/v1/admin/invites", json={"email": "Carol@Example.com"})
-    assert created.status_code == 201, created.text
-    assert mailer.sent[-1].rcpt_to == ["carol@example.com"]
-    token = _link_token(mailer, "invite")
-    await client.post("/api/v1/auth/logout")
-
-    accepted = await client.post(
-        "/api/v1/auth/invite/accept",
-        json={"token": token, "username": "carol", "password": PASSWORD},
-    )
-    assert accepted.status_code == 201
-    reused = await client.post(
-        "/api/v1/auth/invite/accept",
-        json={"token": token, "username": "carol2", "password": PASSWORD},
-    )
-    assert reused.status_code == 404
-
-    carol = await session.scalar(select(User).where(User.username == "carol"))
-    assert carol is not None
-    recipient = await session.get(Recipient, carol.default_recipient_id)
-    assert recipient is not None and recipient.is_usable
-
-    assert await _login(client, "carol") is False
     me = await client.get("/api/v1/me")
-    assert me.json()["email"] == "carol@example.com"
+    assert me.json()["email"] == "boss@example.com"
 
     uri = (await client.post("/api/v1/me/totp/setup")).json()["otpauth_uri"]
     secret = parse_qs(urlparse(uri).query)["secret"][0]
@@ -120,7 +82,7 @@ async def test_invite_login_totp_logout_cycle(
     assert (await client.post("/api/v1/auth/logout")).status_code == 204
     assert (await client.get("/api/v1/me")).status_code == 401
 
-    assert await _login(client, "carol") is True
+    assert await _login(client, "boss") is True
     pending = await client.get("/api/v1/me")
     assert pending.status_code == 401 and pending.json()["error"]["code"] == "mfa_required"
     wrong = await client.post("/api/v1/auth/totp", json={"code": "000000"})
@@ -178,10 +140,10 @@ async def test_wrong_codes_lock_mfa(client: httpx.AsyncClient, session: AsyncSes
     assert (await client.get("/api/v1/me")).status_code == 401
 
 
-async def test_login_does_not_reveal_usernames(
+async def test_login_does_not_reveal_usernames_or_roles(
     client: httpx.AsyncClient, session: AsyncSession
 ) -> None:
-    """Unknown user and wrong password give the same error.
+    """Unknown user, wrong password and a non-operator's correct password look the same.
 
     Args:
         client: HTTP client.
@@ -190,59 +152,58 @@ async def test_login_does_not_reveal_usernames(
         None.
     """
     await _make_admin(session)
+    await UserService(session).create_user("dave", "dave@example.com", PASSWORD)
+    await session.commit()
     unknown = await client.post("/api/v1/auth/login", json={"username": "nobody", "password": "x"})
     wrong = await client.post("/api/v1/auth/login", json={"username": "boss", "password": "x"})
-    assert unknown.status_code == wrong.status_code == 401
-    assert unknown.json() == wrong.json()
+    not_operator = await client.post(
+        "/api/v1/auth/login", json={"username": "dave", "password": PASSWORD}
+    )
+    assert unknown.status_code == wrong.status_code == not_operator.status_code == 401
+    assert unknown.json() == wrong.json() == not_operator.json()
 
 
-async def test_password_reset_flow(
-    client: httpx.AsyncClient, session: AsyncSession, mailer: FakeMailer
+async def test_existing_non_operator_session_is_refused(
+    client: httpx.AsyncClient, session: AsyncSession
 ) -> None:
-    """Reset is silent for unknown emails, works once, and revokes existing sessions.
+    """A session left over from before the lockdown no longer works for a non-operator.
 
     Args:
         client: HTTP client.
         session: Test session.
-        mailer: Fake mailer.
+    Returns:
+        None.
+    """
+    dave = await UserService(session).create_user("dave", "dave@example.com", PASSWORD)
+    await session.commit()
+    sid = await SessionStore(get_redis()).create(dave.id, mfa_passed=True)
+    client.cookies.set(SESSION_COOKIE, sid)
+    response = await client.get("/api/v1/me")
+    assert response.status_code == 401
+
+
+async def test_invite_and_reset_endpoints_are_gone(
+    client: httpx.AsyncClient, session: AsyncSession
+) -> None:
+    """Self-service sign-up and password reset no longer exist.
+
+    Args:
+        client: HTTP client.
+        session: Test session.
     Returns:
         None.
     """
     await _make_admin(session)
     await _login(client, "boss")
-
-    unknown = await client.post(
-        "/api/v1/auth/password-reset/request", json={"email": "x@example.com"}
-    )
-    assert unknown.status_code == 202 and not mailer.sent
-    known = await client.post(
-        "/api/v1/auth/password-reset/request", json={"email": "BOSS@example.com"}
-    )
-    assert known.status_code == 202 and known.json() == unknown.json()
-    token = _link_token(mailer, "reset")
-
-    new_password = "a brand new password"
-    body = {"token": token, "password": new_password}
-    assert (await client.post("/api/v1/auth/password-reset/confirm", json=body)).status_code == 204
-    assert (await client.post("/api/v1/auth/password-reset/confirm", json=body)).status_code == 404
-    assert (await client.get("/api/v1/me")).status_code == 401  # old session revoked
-    assert await _login(client, "boss", new_password) is False
-
-
-async def test_non_admin_cannot_invite(client: httpx.AsyncClient, session: AsyncSession) -> None:
-    """Regular users get 403 on admin routes.
-
-    Args:
-        client: HTTP client.
-        session: Test session.
-    Returns:
-        None.
-    """
-    await UserService(session).create_user("dave", "dave@example.com", PASSWORD)
-    await session.commit()
-    await _login(client, "dave")
-    response = await client.post("/api/v1/admin/invites", json={"email": "e@example.com"})
-    assert response.status_code == 403
+    for method, url in (
+        ("POST", "/api/v1/auth/invite/accept"),
+        ("POST", "/api/v1/auth/password-reset/request"),
+        ("POST", "/api/v1/auth/password-reset/confirm"),
+        ("GET", "/api/v1/admin/invites"),
+        ("POST", "/api/v1/admin/invites"),
+    ):
+        response = await client.request(method, url, json={})
+        assert response.status_code in (404, 405), url
 
 
 @pytest.mark.parametrize("username", ["ab", "rp", "-bad", "Has Space", "admin"])
@@ -290,8 +251,6 @@ def test_cli_create_admin(migrated_db: str) -> None:
                 user = await db.scalar(select(User).where(User.username == username))
                 role = user.role if user else None
                 if user:
-                    user.default_recipient_id = None
-                    await db.flush()
                     await db.execute(delete(Recipient).where(Recipient.user_id == user.id))
                     await db.execute(delete(User).where(User.id == user.id))
                     await db.commit()
@@ -300,3 +259,89 @@ def test_cli_create_admin(migrated_db: str) -> None:
             await get_engine().dispose()
 
     assert asyncio.run(_check_and_cleanup()) is UserRole.ADMIN
+
+
+def _cli_user(username: str, role: UserRole) -> None:
+    """Create a committed user outside the test transaction (the CLI uses its own sessions).
+
+    Args:
+        username: Username.
+        role: Role.
+    Returns:
+        None.
+    """
+    import asyncio
+
+    from mailalias.db import get_engine, get_session_factory
+
+    async def _create() -> None:
+        try:
+            async with get_session_factory()() as db:
+                await UserService(db).create_user(
+                    username, f"{username}@example.com", PASSWORD, role
+                )
+                await db.commit()
+        finally:
+            await get_engine().dispose()
+
+    asyncio.run(_create())
+
+
+def _cli_cleanup(username: str, password: str) -> bool:
+    """Check a password through the service, then delete the user.
+
+    Args:
+        username: Username.
+        password: Password to check.
+    Returns:
+        Whether the password authenticates.
+    """
+    import asyncio
+
+    from mailalias.db import get_engine, get_session_factory
+
+    async def _run() -> bool:
+        try:
+            async with get_session_factory()() as db:
+                ok = await UserService(db).authenticate(username, password) is not None
+                user = await db.scalar(select(User).where(User.username == username))
+                if user:
+                    await db.execute(delete(Recipient).where(Recipient.user_id == user.id))
+                    await db.execute(delete(User).where(User.id == user.id))
+                    await db.commit()
+                return ok
+        finally:
+            await get_engine().dispose()
+
+    return asyncio.run(_run())
+
+
+def test_cli_reset_password(migrated_db: str) -> None:
+    """`mailalias reset-password` sets a new operator password; other accounts are refused.
+
+    Args:
+        migrated_db: Ensures the test database exists.
+    Returns:
+        None.
+    """
+    operator, other = f"op-{secrets.token_hex(3)}", f"sub-{secrets.token_hex(3)}"
+    _cli_user(operator, UserRole.ADMIN)
+    _cli_user(other, UserRole.USER)
+    new_password = "a brand new password"
+    try:
+        result = CliRunner().invoke(
+            cli_app,
+            ["reset-password", "--username", operator],
+            input=f"{new_password}\n{new_password}\n",
+        )
+        refused = CliRunner().invoke(
+            cli_app,
+            ["reset-password", "--username", other],
+            input=f"{new_password}\n{new_password}\n",
+        )
+    finally:
+        operator_ok = _cli_cleanup(operator, new_password)
+        _cli_cleanup(other, PASSWORD)
+    assert result.exit_code == 0, result.output
+    assert refused.exit_code == 1
+    assert operator_ok is True

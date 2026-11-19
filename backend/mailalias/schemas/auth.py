@@ -4,7 +4,7 @@
 from typing import Any, Literal
 
 # 3rd party imports
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, Field
 
 MfaMethod = Literal["totp", "webauthn"]
 
@@ -39,30 +39,3 @@ class TotpRequest(BaseModel):
     """Second-factor code: TOTP or backup code."""
 
     code: str = Field(min_length=6, max_length=16)
-
-
-class InviteAcceptRequest(BaseModel):
-    """Redeem an invite."""
-
-    token: str = Field(min_length=10, max_length=128)
-    username: str = Field(min_length=3, max_length=30)
-    password: str = Field(min_length=1, max_length=256)
-
-
-class PasswordResetRequest(BaseModel):
-    """Ask for a reset link."""
-
-    email: EmailStr
-
-
-class PasswordResetConfirm(BaseModel):
-    """Set a new password with a reset token."""
-
-    token: str = Field(min_length=10, max_length=128)
-    password: str = Field(min_length=1, max_length=256)
-
-
-class InviteCreate(BaseModel):
-    """Admin: invite an email address."""
-
-    email: EmailStr

@@ -19,8 +19,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useCreateAlias } from "@/features/aliases/api";
 import { localPartError } from "@/features/aliases/validation";
-import { useMe } from "@/features/auth/api";
 import { useRecipients } from "@/features/recipients/api";
+import { useSubdomainSettings } from "@/features/subdomains/api";
+import { useSubdomainLabel } from "@/features/subdomains/useSubdomainLabel";
 import type { Alias, AliasCreate, AliasFormat } from "@/lib/api";
 import { errorMessage } from "@/lib/http";
 
@@ -43,17 +44,17 @@ export function CreateAliasDialog({ open, onOpenChange, onCreated }: CreateAlias
   const [description, setDescription] = useState("");
   const [recipientIds, setRecipientIds] = useState<string[]>([]);
   const [localError, setLocalError] = useState<string | null>(null);
-  const me = useMe();
+  const label = useSubdomainLabel();
+  const settings = useSubdomainSettings(label);
   const recipients = useRecipients();
   const create = useCreateAlias();
-  const username = me.data?.username ?? "you";
-  const chosenFormat = format ?? me.data?.alias_format ?? "words";
+  const chosenFormat = format ?? settings.data?.alias_format ?? "words";
   const recipientOptions = (recipients.data ?? [])
     .filter((recipient) => recipient.verified && !recipient.disabled)
     .map((recipient) => ({
       value: recipient.id,
       label: recipient.email,
-      hint: recipient.is_default ? "default" : undefined,
+      hint: recipient.forward_by_default ? "default" : undefined,
     }));
 
   function reset() {
@@ -143,7 +144,7 @@ export function CreateAliasDialog({ open, onOpenChange, onCreated }: CreateAlias
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="shared">@{ALIAS_DOMAIN}</SelectItem>
-                        <SelectItem value="subdomain">@{username}.{ALIAS_DOMAIN}</SelectItem>
+                        <SelectItem value="subdomain">@{label}.{ALIAS_DOMAIN}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

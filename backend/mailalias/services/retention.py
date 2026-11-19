@@ -1,4 +1,4 @@
-"""Data retention: expired quarantine, old logs and failures, stale invite and verify tokens."""
+"""Data retention: expired quarantine, old logs and failures, stale verify tokens."""
 
 # 1st party imports
 import logging
@@ -13,12 +13,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 # local imports
 from mailalias.integrations.r2 import ObjectStore
-from mailalias.models import FailedDelivery, Invite, MailLog, QuarantineItem, Recipient
+from mailalias.models import FailedDelivery, MailLog, QuarantineItem, Recipient
 from mailalias.services.recipients import VERIFY_TTL
 
 logger = logging.getLogger(__name__)
 
-MAIL_LOG_DAYS = 30
+MAIL_LOG_DAYS = 90  # delivery_log rows go with their mail_log row (ON DELETE CASCADE)
 FAILED_DELIVERY_DAYS = 90
 QUARANTINE_BATCH = 200
 
@@ -30,7 +30,6 @@ class RetentionResult:
     quarantine: int
     mail_log: int
     failed_deliveries: int
-    invites: int
     verify_tokens: int
 
 
@@ -93,9 +92,6 @@ async def run_retention(
             FailedDelivery.created_at < now - timedelta(days=FAILED_DELIVERY_DAYS)
         ),
     )
-    invites = await _affected(
-        db, delete(Invite).where(Invite.expires_at < now, Invite.used_at.is_(None))
-    )
     tokens = await _affected(
         db,
         update(Recipient)
@@ -109,7 +105,6 @@ async def run_retention(
         quarantine=quarantine,
         mail_log=mail_log,
         failed_deliveries=failures,
-        invites=invites,
         verify_tokens=tokens,
     )
     logger.info("retention", extra=vars(result))

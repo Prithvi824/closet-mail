@@ -1,11 +1,13 @@
 """Workers KV client used by KvSync to publish alias/token validity to the edge."""
 
 # 1st party imports
+import json
 from collections.abc import AsyncIterator
+from typing import Any
 from urllib.parse import quote
 
 # local imports
-from mailalias.integrations.cloudflare_api import CloudflareApi
+from mailalias.integrations.cloudflare_api import CloudflareApi, CloudflareApiError
 
 BULK_LIMIT = 10_000
 LIST_PAGE_SIZE = 1000
@@ -37,7 +39,7 @@ class CloudflareKv:
         return f"{self._base}/values/{quote(key, safe='')}"
 
     async def put(self, key: str, value: str) -> None:
-        """Write one key.
+        """Write one key, with the value copied into its metadata so listings can compare it.
 
         Args:
             key: KV key.
@@ -45,13 +47,24 @@ class CloudflareKv:
         Returns:
             None.
         """
-        await self._api.json(
-            "kv.put",
-            "PUT",
-            self._value_url(key),
-            content=value.encode(),
-            headers={"Content-Type": "text/plain"},
-        )
+        form = {"value": (None, value), "metadata": (None, json.dumps({"v": value}))}
+        await self._api.json("kv.put", "PUT", self._value_url(key), files=form)
+
+    async def get(self, key: str) -> str | None:
+        """Read one key (a KV read, not a list, so it stays within the free read budget).
+
+        Args:
+            key: KV key.
+        Returns:
+            The value, or None when the key does not exist.
+        """
+        try:
+            response = await self._api.request("kv.get", "GET", self._value_url(key))
+        except CloudflareApiError as exc:
+            if exc.status == 404:
+                return None
+            raise
+        return response.text
 
     async def delete(self, key: str) -> None:
         """Delete one key (missing keys are fine).
@@ -71,7 +84,9 @@ class CloudflareKv:
         Returns:
             None.
         """
-        pairs = [{"key": key, "value": value} for key, value in items.items()]
+        pairs = [
+            {"key": key, "value": value, "metadata": {"v": value}} for key, value in items.items()
+        ]
         for start in range(0, len(pairs), BULK_LIMIT):
             await self._api.json(
                 "kv.bulk_put", "PUT", f"{self._base}/bulk", json=pairs[start : start + BULK_LIMIT]
@@ -93,13 +108,13 @@ class CloudflareKv:
                 json=keys[start : start + BULK_LIMIT],
             )
 
-    async def list_keys(self, prefix: str) -> AsyncIterator[str]:
-        """Iterate over all key names with a prefix, following cursors.
+    async def _list(self, prefix: str) -> AsyncIterator[dict[str, Any]]:
+        """Iterate over the raw key entries with a prefix, following cursors.
 
         Args:
             prefix: Key prefix, e.g. "a:".
         Returns:
-            An async iterator of key names.
+            An async iterator of {"name", "metadata"?} entries.
         """
         cursor: str | None = None
         while True:
@@ -108,7 +123,31 @@ class CloudflareKv:
                 params["cursor"] = cursor
             payload = await self._api.json("kv.list", "GET", f"{self._base}/keys", params=params)
             for item in payload.get("result") or []:
-                yield str(item["name"])
+                yield item
             cursor = (payload.get("result_info") or {}).get("cursor") or None
             if not cursor:
                 return
+
+    async def list_keys(self, prefix: str) -> AsyncIterator[str]:
+        """Iterate over all key names with a prefix.
+
+        Args:
+            prefix: Key prefix, e.g. "a:".
+        Returns:
+            An async iterator of key names.
+        """
+        async for item in self._list(prefix):
+            yield str(item["name"])
+
+    async def list_entries(self, prefix: str) -> AsyncIterator[tuple[str, str | None]]:
+        """Iterate over keys with the value saved in their metadata (None for older keys).
+
+        Args:
+            prefix: Key prefix, e.g. "a:".
+        Returns:
+            An async iterator of (key name, value or None).
+        """
+        async for item in self._list(prefix):
+            metadata = item.get("metadata")
+            value = metadata.get("v") if isinstance(metadata, dict) else None
+            yield str(item["name"]), str(value) if value is not None else None

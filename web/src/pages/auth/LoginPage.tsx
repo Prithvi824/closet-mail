@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
-import { Link, useNavigate, useSearchParams } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import type { z } from "zod";
 
 import { FormError } from "@/components/FormError";
@@ -35,8 +35,7 @@ export function LoginPage() {
   return (
     <AuthCard
       title="Sign in"
-      description="Use the username from your invite."
-      footer={<Link to="/reset" className="underline-offset-4 hover:underline">Forgot your password?</Link>}
+      description="Operator sign-in."
     >
       <form onSubmit={form.handleSubmit(onSubmit)} noValidate>
         <FieldGroup>

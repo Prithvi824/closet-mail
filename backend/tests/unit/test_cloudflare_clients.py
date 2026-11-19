@@ -13,6 +13,7 @@ from botocore.exceptions import ClientError
 # local imports
 from mailalias.config import get_settings
 from mailalias.integrations.cloudflare_api import CloudflareApi, CloudflareApiError
+from mailalias.integrations.cloudflare_dns import CloudflareDns
 from mailalias.integrations.cloudflare_kv import CloudflareKv
 from mailalias.integrations.cloudflare_queue import CloudflareQueueInbox, MalformedJob, parse_job
 from mailalias.integrations.r2 import R2ObjectMissing, R2Storage
@@ -21,6 +22,7 @@ from mailalias.mail.types import RetryableError
 BASE = "https://api.cloudflare.com/client/v4/accounts/test-account"
 QUEUE = f"{BASE}/queues/test-queue/messages"
 KV = f"{BASE}/storage/kv/namespaces/test-kv"
+DNS = "https://api.cloudflare.com/client/v4/zones/test-zone/dns_records"
 
 
 async def _no_sleep(_seconds: float) -> None:
@@ -260,15 +262,35 @@ async def test_4xx_is_permanent() -> None:
 
 
 @respx.mock
-async def test_kv_put_escapes_key_and_sends_value() -> None:
-    """Keys with ':' and '@' are percent-encoded; the value is the raw body.
+async def test_kv_put_escapes_key_and_sends_value_with_metadata() -> None:
+    """Keys with ':' and '@' are percent-encoded; the value also travels as metadata {"v": ...}.
 
     Returns:
         None.
     """
     route = respx.put(f"{KV}/values/a%3Aspike%40closetcompute.online").respond(json=_ok(None))
     await CloudflareKv(_api(), "test-kv").put("a:spike@closetcompute.online", "A")
-    assert route.calls[0].request.content == b"A"
+    request = route.calls[0].request
+    assert request.headers["content-type"].startswith("multipart/form-data")
+    body = request.content.decode()
+    assert 'name="value"\r\n\r\nA\r\n' in body
+    assert 'name="metadata"\r\n\r\n{"v": "A"}\r\n' in body
+
+
+@respx.mock
+async def test_kv_list_entries_yields_metadata_values() -> None:
+    """list_entries pairs each key with the value stored in its metadata (None when absent).
+
+    Returns:
+        None.
+    """
+    respx.get(f"{KV}/keys").respond(
+        json=_ok(
+            [{"name": "a:1", "metadata": {"v": "A"}}, {"name": "a:2"}], result_info={"cursor": ""}
+        )
+    )
+    entries = [entry async for entry in CloudflareKv(_api(), "test-kv").list_entries("a:")]
+    assert entries == [("a:1", "A"), ("a:2", None)]
 
 
 @respx.mock
@@ -304,7 +326,9 @@ async def test_kv_bulk_put_and_delete() -> None:
     kv = CloudflareKv(_api(), "test-kv")
     await kv.bulk_put({"r:tok": "V"})
     await kv.bulk_delete(["r:old"])
-    assert json.loads(put.calls[0].request.content) == [{"key": "r:tok", "value": "V"}]
+    assert json.loads(put.calls[0].request.content) == [
+        {"key": "r:tok", "value": "V", "metadata": {"v": "V"}}
+    ]
     assert json.loads(delete.calls[0].request.content) == ["r:old"]
 
 
@@ -346,3 +370,69 @@ async def test_r2_error_mapping(code: str, error: type[Exception]) -> None:
     """
     with pytest.raises(error):
         await R2Storage(get_settings(), client=_FakeS3(code)).get("in/x.eml")
+
+
+@respx.mock
+async def test_dns_records_lists_by_name_and_type_with_normalised_mx() -> None:
+    """MX contents are lowercased without the trailing dot; only a GET is made.
+
+    Returns:
+        None.
+    """
+    route = respx.get(DNS).respond(
+        json=_ok(
+            [
+                {
+                    "type": "MX",
+                    "name": "acme.closetcompute.online",
+                    "content": "Route1.MX.cloudflare.net.",
+                    "priority": 1,
+                },
+                {
+                    "type": "MX",
+                    "name": "acme.closetcompute.online",
+                    "content": "route2.mx.cloudflare.net",
+                    "priority": 2,
+                },
+            ]
+        )
+    )
+    records = await CloudflareDns(_api(), "test-zone").records("acme.closetcompute.online", "MX")
+    assert [r.content for r in records] == ["route1.mx.cloudflare.net", "route2.mx.cloudflare.net"]
+    assert records[0].priority == 1
+    params = route.calls[0].request.url.params
+    assert (params["name"], params["type"], params["per_page"]) == (
+        "acme.closetcompute.online",
+        "MX",
+        "50",
+    )
+    assert all(call.request.method == "GET" for call in respx.calls)
+
+
+@respx.mock
+async def test_dns_errors_surface_without_writes() -> None:
+    """A Cloudflare outage becomes RetryableError; nothing but GETs is attempted.
+
+    Returns:
+        None.
+    """
+    respx.get(DNS).respond(500)
+    with pytest.raises(RetryableError):
+        await CloudflareDns(_api(), "test-zone").records("acme.closetcompute.online", "TXT")
+    assert {call.request.method for call in respx.calls} == {"GET"}
+
+
+@respx.mock
+async def test_kv_get_returns_value_or_none() -> None:
+    """A present key returns its text; a missing key (404) returns None.
+
+    Returns:
+        None.
+    """
+    respx.get(f"{KV}/values/s%3Aacme").respond(text="C")
+    respx.get(f"{KV}/values/s%3Agone").respond(
+        404, json={"success": False, "errors": [{"code": 10009}]}
+    )
+    kv = CloudflareKv(_api(), "test-kv")
+    assert await kv.get("s:acme") == "C"
+    assert await kv.get("s:gone") is None

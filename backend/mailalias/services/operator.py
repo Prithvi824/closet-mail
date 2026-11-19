@@ -1,11 +1,9 @@
-"""Admin console logic: user management, system health and dead-letter queue recovery."""
+"""Operator console logic: system health and dead-letter queue recovery."""
 
 # 1st party imports
 import asyncio
 import json
 import logging
-import uuid
-from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -16,32 +14,20 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # local imports
-from mailalias.api.errors import NotFound, ValidationFailed
 from mailalias.config import Settings
 from mailalias.integrations.cloudflare_queue import CloudflareQueueAdmin, MalformedJob, parse_job
 from mailalias.mail.processor import HEARTBEAT_KEY
 from mailalias.mail.types import RetryableError
-from mailalias.models import Alias, AliasState, FailedDelivery, FailureKind, User, UserRole
-from mailalias.security.sessions import SessionStore
-from mailalias.services import audit, kv_sync
+from mailalias.models import FailedDelivery, FailureKind, User
+from mailalias.services import audit
 from mailalias.services.kv_sync import LAST_RECONCILE_KEY
 from mailalias.services.quota import global_key
 
 logger = logging.getLogger(__name__)
 
-# users.limits keys an admin may override (see QuotaService / AliasService).
-LIMIT_KEYS = frozenset({"forwards_per_hour", "replies_per_day", "alias_creates_per_hour"})
 DLQ_BATCH = 100
 DLQ_VISIBILITY_MS = 30_000
 FAILURE_WINDOW_DAYS = 7
-
-
-@dataclass(frozen=True)
-class UserSummary:
-    """A user row for the admin list."""
-
-    user: User
-    alias_count: int
 
 
 @dataclass(frozen=True)
@@ -58,7 +44,7 @@ class DlqItem:
 
 @dataclass(frozen=True)
 class Health:
-    """Numbers for the admin health page; None means "could not be read"."""
+    """Numbers for the operator health page; None means "could not be read"."""
 
     heartbeat_age_seconds: float | None
     inbound_backlog: int | None
@@ -70,8 +56,8 @@ class Health:
     kv_reconcile: dict[str, Any] | None
 
 
-class AdminService:
-    """Operations behind /admin; every method assumes the caller is an admin."""
+class OperatorService:
+    """Operations behind /operator health and DLQ; the caller is the operator."""
 
     def __init__(self, db: AsyncSession, settings: Settings, redis: Redis) -> None:
         """Build the service.
@@ -86,75 +72,6 @@ class AdminService:
         self.db = db
         self.settings = settings
         self.redis = redis
-
-    async def list_users(self) -> list[UserSummary]:
-        """All users with their live alias counts, oldest first.
-
-        Returns:
-            Summaries.
-        """
-        counts = (
-            select(Alias.user_id, func.count().label("n"))
-            .where(Alias.state.in_((AliasState.ACTIVE, AliasState.INACTIVE)))
-            .group_by(Alias.user_id)
-            .subquery()
-        )
-        rows = await self.db.execute(
-            select(User, func.coalesce(counts.c.n, 0))
-            .outerjoin(counts, counts.c.user_id == User.id)
-            .order_by(User.created_at)
-        )
-        return [UserSummary(user, int(count)) for user, count in rows.all()]
-
-    async def update_user(
-        self,
-        actor: User,
-        user_id: uuid.UUID,
-        *,
-        disabled: bool | None = None,
-        role: UserRole | None = None,
-        limits: Mapping[str, int] | None = None,
-        clear_limits: bool = False,
-    ) -> UserSummary:
-        """Disable/enable a user, change their role, or override their limits.
-
-        Args:
-            actor: The admin making the change (cannot disable or demote themselves).
-            user_id: Target user.
-            disabled, role: New values; None leaves them unchanged.
-            limits: Limit overrides (keys from LIMIT_KEYS); clear_limits resets to defaults.
-        Returns:
-            The updated summary. Raises NotFound or ValidationFailed.
-        """
-        user = await self.db.get(User, user_id)
-        if user is None:
-            raise NotFound("User not found")
-        if user.id == actor.id and (disabled or (role is not None and role != UserRole.ADMIN)):
-            raise ValidationFailed("You cannot disable or demote your own account")
-        if limits is not None:
-            unknown = set(limits) - LIMIT_KEYS
-            if unknown:
-                raise ValidationFailed(f"Unknown limits: {', '.join(sorted(unknown))}")
-            user.limits = {**(user.limits or {}), **limits}
-        if clear_limits:
-            user.limits = None
-        if role is not None:
-            user.role = role
-        if disabled is not None and disabled != (user.disabled_at is not None):
-            user.disabled_at = datetime.now(UTC) if disabled else None
-            if disabled:
-                await SessionStore(self.redis).delete_all_for_user(user.id)
-            # The edge's subdomain catch-all flag depends on the account being enabled.
-            kv_sync.mark_subdomain(self.db, user.id)
-        await audit.record(
-            self.db,
-            "admin.user_update",
-            actor_id=actor.id,
-            target_type="user",
-            target_id=str(user.id),
-        )
-        await self.db.flush()
-        return next(s for s in await self.list_users() if s.user.id == user.id)
 
     async def health(self, queues: CloudflareQueueAdmin) -> Health:
         """Collect health numbers; a failing source yields None rather than an error.
@@ -245,7 +162,7 @@ class AdminService:
 
         Args:
             queues: Queue client.
-            actor: Admin (audited).
+            actor: Operator (audited).
             r2_keys: Jobs to move; None moves every job pulled.
         Returns:
             Number of jobs moved.
@@ -263,5 +180,5 @@ class AdminService:
             # Ack right away: if a later send fails, only the jobs not yet moved stay behind.
             await queues.ack(self.settings.cf_queue_id_dlq, [str(message["lease_id"])])
             moved.append(str(message["lease_id"]))
-        await audit.record(self.db, "admin.dlq_retry", actor_id=actor.id, target_type="queue")
+        await audit.record(self.db, "operator.dlq_retry", actor_id=actor.id, target_type="queue")
         return len(moved)

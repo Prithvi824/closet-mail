@@ -1,7 +1,7 @@
 import axios, { isAxiosError } from "axios";
 
 /** Paths that are reachable without a session; a 401 there must not bounce to /login. */
-const PUBLIC_PATH_PREFIXES = ["/login", "/totp", "/invite", "/reset"];
+const PUBLIC_PATH_PREFIXES = ["/login", "/totp"];
 
 /** The single HTTP client for the API (cookie session + CSRF header). */
 export const http = axios.create({

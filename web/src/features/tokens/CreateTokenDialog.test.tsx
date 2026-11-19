@@ -5,7 +5,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CreateTokenDialog } from "@/features/tokens/CreateTokenDialog";
 import { http } from "@/lib/http";
-import { renderPage } from "@/test/render";
+import { renderScoped } from "@/test/render";
 
 vi.mock("@/lib/http", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/lib/http")>();
@@ -28,13 +28,13 @@ function Harness() {
 describe("CreateTokenDialog", () => {
   it("shows the secret once; reopening starts a fresh form without it", async () => {
     post.mockResolvedValueOnce({ data: { id: "t1", name: "cli", prefix: "abcd1234", scopes: ["aliases:read"], token: SECRET } });
-    renderPage(<Harness />);
+    renderScoped(<Harness />);
     await userEvent.click(screen.getByRole("button", { name: "open" }));
     await userEvent.type(screen.getByLabelText("Name"), "cli");
     await userEvent.click(screen.getByLabelText(/Manage aliases/));
     await userEvent.click(screen.getByRole("button", { name: "Create token" }));
     expect(await screen.findByTestId("token-secret")).toHaveTextContent(SECRET);
-    expect(post).toHaveBeenCalledWith("/tokens", {
+    expect(post).toHaveBeenCalledWith("/subdomains/pia/tokens", {
       name: "cli",
       scopes: ["aliases:read", "aliases:write"],
       expires_in_days: 90,

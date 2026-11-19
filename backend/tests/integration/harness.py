@@ -22,7 +22,7 @@ from mailalias.integrations.rspamd import SpamCheckUnavailable, SpamVerdict
 from mailalias.mail.outbound import FakeMailer
 from mailalias.mail.processor import MailProcessor
 from mailalias.mail.types import InboundEnvelope, RetryableError
-from mailalias.models import Alias, MailLog, User
+from mailalias.models import Alias, MailLog, Recipient, User, UserRole
 from mailalias.services.aliases import AliasService
 from mailalias.services.system_mail import SystemMailService
 from mailalias.services.users import UserService
@@ -213,7 +213,7 @@ def _factory(session: AsyncSession) -> Callable[[], AbstractAsyncContextManager[
 
 
 async def make_harness(session: AsyncSession, mailer: FakeMailer | None = None) -> Harness:
-    """Create user "pia" with an alias and a processor around fakes.
+    """Create operator "pia" (also a subdomain) with an alias and a processor around fakes.
 
     Args:
         session: Test session.
@@ -222,7 +222,9 @@ async def make_harness(session: AsyncSession, mailer: FakeMailer | None = None) 
         The harness.
     """
     settings = get_settings()
-    user = await UserService(session).create_user("pia", "pia@example.com", "x" * 12)
+    user = await UserService(session).create_user(
+        "pia", "pia@example.com", "x" * 12, UserRole.ADMIN
+    )
     alias = await AliasService(session, settings).create(user, local_part="shop")
     await session.commit()
     inbox, notices, spam, store = FakeInbox(), FakeMailer(), FakeSpam(), FakeStore()
@@ -253,3 +255,30 @@ async def mail_logs(session: AsyncSession, harness: Harness) -> list[MailLog]:
     """
     query = select(MailLog).where(MailLog.user_id == harness.user.id).order_by(MailLog.created_at)
     return list(await session.scalars(query))
+
+
+async def default_inbox(session: AsyncSession, user: User) -> Recipient:
+    """The inbox UserService.create_user made for a user (its first recipient).
+
+    Args:
+        session: Test session.
+        user: The user.
+    Returns:
+        That recipient.
+    """
+    query = select(Recipient).where(Recipient.user_id == user.id).order_by(Recipient.created_at)
+    recipient = (await session.scalars(query)).first()
+    assert recipient is not None
+    return recipient
+
+
+def sub(label: str, path: str) -> str:
+    """API path inside one subdomain's scope.
+
+    Args:
+        label: Subdomain label (username).
+        path: Path under the scope, e.g. "/aliases".
+    Returns:
+        "/api/v1/subdomains/<label><path>".
+    """
+    return f"/api/v1/subdomains/{label}{path}"

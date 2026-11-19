@@ -7,12 +7,13 @@ from mailalias.models.audit import AuditLog
 from mailalias.models.base import Base
 from mailalias.models.blocklist import BlockKind, BlocklistEntry
 from mailalias.models.contact import Contact
+from mailalias.models.delivery_log import DeliveryLog, DeliveryStatus
 from mailalias.models.failed_delivery import FailedDelivery, FailureKind
-from mailalias.models.invite import Invite
 from mailalias.models.label import Label, alias_labels
 from mailalias.models.mail_log import MailLog
 from mailalias.models.quarantine import QuarantineItem
 from mailalias.models.recipient import Recipient
+from mailalias.models.subdomain_status import SubdomainState, SubdomainStatus
 from mailalias.models.usage import UsageDaily
 from mailalias.models.user import AliasFormat, BannerPosition, User, UserRole
 from mailalias.models.webauthn import WebAuthnCredential
@@ -29,13 +30,16 @@ __all__ = [
     "BlockKind",
     "BlocklistEntry",
     "Contact",
+    "DeliveryLog",
+    "DeliveryStatus",
     "FailedDelivery",
     "FailureKind",
-    "Invite",
     "Label",
     "MailLog",
     "QuarantineItem",
     "Recipient",
+    "SubdomainState",
+    "SubdomainStatus",
     "UsageDaily",
     "User",
     "UserRole",

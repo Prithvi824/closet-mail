@@ -2,14 +2,15 @@ import {
   ActivityIcon,
   AtSignIcon,
   BanIcon,
+  GaugeIcon,
+  GlobeIcon,
   HeartPulseIcon,
   InboxIcon,
   KeyRoundIcon,
-  MailPlusIcon,
   MailXIcon,
   SettingsIcon,
   ShieldAlertIcon,
-  UsersIcon,
+  UserCogIcon,
   type LucideIcon,
 } from "lucide-react";
 
@@ -19,19 +20,24 @@ export interface NavItem {
   icon: LucideIcon;
 }
 
-export const MAIN_NAV: NavItem[] = [
-  { to: "/aliases", label: "Aliases", icon: AtSignIcon },
-  { to: "/recipients", label: "Recipients", icon: InboxIcon },
-  { to: "/quarantine", label: "Quarantine", icon: ShieldAlertIcon },
-  { to: "/failed", label: "Failed deliveries", icon: MailXIcon },
-  { to: "/activity", label: "Activity", icon: ActivityIcon },
-  { to: "/blocklist", label: "Blocklist", icon: BanIcon },
-  { to: "/tokens", label: "API tokens", icon: KeyRoundIcon },
-  { to: "/settings", label: "Settings", icon: SettingsIcon },
+/** Operator-wide pages. */
+export const OPERATOR_NAV: NavItem[] = [
+  { to: "/overview", label: "Overview", icon: GaugeIcon },
+  { to: "/subdomains", label: "Subdomains", icon: GlobeIcon },
+  { to: "/health", label: "Health", icon: HeartPulseIcon },
+  { to: "/account", label: "Account", icon: UserCogIcon },
 ];
 
-export const ADMIN_NAV: NavItem[] = [
-  { to: "/admin/users", label: "Users", icon: UsersIcon },
-  { to: "/admin/invites", label: "Invites", icon: MailPlusIcon },
-  { to: "/admin/health", label: "Health", icon: HeartPulseIcon },
+/** Sections of one subdomain; `to` is the segment after /s/:label/. */
+export const SUBDOMAIN_NAV: NavItem[] = [
+  { to: "aliases", label: "Aliases", icon: AtSignIcon },
+  { to: "inboxes", label: "Inboxes", icon: InboxIcon },
+  { to: "quarantine", label: "Quarantine", icon: ShieldAlertIcon },
+  { to: "failed", label: "Failed deliveries", icon: MailXIcon },
+  { to: "activity", label: "Activity", icon: ActivityIcon },
+  { to: "blocklist", label: "Blocklist", icon: BanIcon },
+  { to: "tokens", label: "API tokens", icon: KeyRoundIcon },
+  { to: "settings", label: "Settings", icon: SettingsIcon },
 ];
+
+export const SUBDOMAIN_SECTIONS = SUBDOMAIN_NAV.map((item) => item.to);

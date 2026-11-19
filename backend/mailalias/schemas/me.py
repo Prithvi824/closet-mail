@@ -22,7 +22,6 @@ class MeResponse(BaseModel):
     email: str
     role: UserRole
     totp_enabled: bool
-    default_recipient_id: uuid.UUID | None
     banner_position: BannerPosition
     alias_format: AliasFormat
     strip_trackers: bool
@@ -31,13 +30,23 @@ class MeResponse(BaseModel):
 
 
 class SettingsUpdate(BaseModel):
-    """Partial preference update; omitted fields are unchanged."""
+    """Partial preference update of one subdomain; omitted fields are unchanged."""
 
     banner_position: BannerPosition | None = None
     alias_format: AliasFormat | None = None
     strip_trackers: bool | None = None
     subdomain_catchall: bool | None = None
-    default_recipient_id: uuid.UUID | None = None
+
+
+class SubdomainSettings(BaseModel):
+    """Forwarding preferences of one subdomain."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    banner_position: BannerPosition
+    alias_format: AliasFormat
+    strip_trackers: bool
+    subdomain_catchall: bool
 
 
 class TotpSetupResponse(BaseModel):
@@ -62,18 +71,6 @@ class PasswordConfirm(BaseModel):
     """Re-authentication for sensitive changes."""
 
     password: str = Field(min_length=1, max_length=256)
-
-
-class InviteResponse(BaseModel):
-    """Admin view of an invite (email shown; it is the admin's own data)."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    id: uuid.UUID
-    email: str
-    expires_at: datetime
-    used_at: datetime | None
-    created_at: datetime
 
 
 class PasskeyRegister(BaseModel):

@@ -1,4 +1,4 @@
-"""Authentication: login, second factor, logout, invites and password reset."""
+"""Authentication for the operator: login, second factor and logout."""
 
 # 1st party imports
 import json
@@ -8,25 +8,21 @@ import uuid
 from fastapi import APIRouter, Request, Response, status
 
 # local imports
-from mailalias.api.deps import AppSettings, CurrentSession, DbSession, Sessions, SystemMail
+from mailalias.api.deps import AppSettings, CurrentSession, DbSession, Sessions
 from mailalias.api.errors import QuotaExceeded, Unauthorized
 from mailalias.config import Settings
 from mailalias.db import get_redis
 from mailalias.models import User
 from mailalias.schemas.auth import (
-    InviteAcceptRequest,
     LoginRequest,
     LoginResponse,
     MfaMethod,
     PasskeyAssertion,
     PasskeyOptions,
-    PasswordResetConfirm,
-    PasswordResetRequest,
     TotpRequest,
 )
 from mailalias.security.sessions import SESSION_COOKIE, SESSION_TTL_SECONDS, SessionData
 from mailalias.services import audit
-from mailalias.services.invites import InviteService
 from mailalias.services.passkeys import PasskeyService, has_passkeys
 from mailalias.services.users import UserService
 
@@ -200,54 +196,3 @@ async def logout(request: Request, response: Response, sessions: Sessions) -> No
     if sid := request.cookies.get(SESSION_COOKIE):
         await sessions.delete(sid)
     response.delete_cookie(SESSION_COOKIE, path="/")
-
-
-@router.post("/invite/accept", status_code=status.HTTP_201_CREATED)
-async def accept_invite(body: InviteAcceptRequest, db: DbSession) -> dict[str, str]:
-    """Create an account from an invite.
-
-    Args:
-        body: Token and chosen credentials.
-        db: Database session.
-    Returns:
-        {"username": ...}; the user then signs in normally.
-    """
-    user = await InviteService(db).accept(body.token, body.username, body.password)
-    await db.commit()
-    return {"username": user.username}
-
-
-@router.post("/password-reset/request", status_code=status.HTTP_202_ACCEPTED)
-async def request_password_reset(
-    body: PasswordResetRequest, db: DbSession, mail: SystemMail
-) -> dict[str, str]:
-    """Send a reset link if the email belongs to an account; same response either way.
-
-    Args:
-        body: Account email.
-        db: Database session.
-        mail: System mail service.
-    Returns:
-        A generic acknowledgement.
-    """
-    await UserService(db, get_redis()).request_password_reset(str(body.email), mail)
-    await db.commit()
-    return {"status": "If the address has an account, a reset link has been sent."}
-
-
-@router.post("/password-reset/confirm", status_code=status.HTTP_204_NO_CONTENT)
-async def confirm_password_reset(
-    body: PasswordResetConfirm, db: DbSession, sessions: Sessions
-) -> None:
-    """Set a new password and sign out every session of that user.
-
-    Args:
-        body: Token and new password.
-        db: Database session.
-        sessions: Session store.
-    Returns:
-        None (204).
-    """
-    user = await UserService(db, get_redis()).confirm_password_reset(body.token, body.password)
-    await db.commit()
-    await sessions.delete_all_for_user(user.id)

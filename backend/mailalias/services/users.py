@@ -3,7 +3,6 @@
 # 1st party imports
 import hashlib
 import secrets
-import uuid
 from datetime import UTC, datetime
 
 # 3rd party imports
@@ -20,12 +19,9 @@ from mailalias.security import totp
 from mailalias.security.crypto import lookup_hash
 from mailalias.security.passwords import hash_password, needs_rehash, verify_password
 from mailalias.services import audit
-from mailalias.services.system_mail import SystemMailService
 
 MIN_PASSWORD_LENGTH = 10
 MAX_PASSWORD_LENGTH = 128
-RESET_TTL_SECONDS = 3600
-_RESET_KEY = "pwreset:{digest}"
 _TOTP_USED_KEY = "totp:used:{user_id}:{code}"
 _MFA_FAIL_KEY = "mfa:fail:{user_id}"
 # Wrong second-factor codes allowed per user before MFA is locked for the window.
@@ -103,7 +99,7 @@ class UserService:
 
         Args:
             username: Desired username (becomes the personal subdomain label).
-            email: Account email (already proven by invite or by the admin).
+            email: Account email (becomes its first, verified, default inbox).
             password: Plaintext password.
             role: Account role.
         Returns:
@@ -127,11 +123,13 @@ class UserService:
         except IntegrityError as exc:
             raise Conflict("Username or email already in use") from exc
         recipient = Recipient(
-            user_id=user.id, email=email, email_hash=lookup_hash(email), verified_at=_now()
+            user_id=user.id,
+            email=email,
+            email_hash=lookup_hash(email),
+            verified_at=_now(),
+            forward_by_default=True,
         )
         self.db.add(recipient)
-        await self.db.flush()
-        user.default_recipient_id = recipient.id
         await self.db.flush()
         return user
 
@@ -142,10 +140,11 @@ class UserService:
             username: Username.
             password: Plaintext password.
         Returns:
-            The user if the password matches and the account is enabled, else None.
+            The operator if the password matches and the account is enabled, else None.
         """
         user = await self.get_by_username(username)
-        if user is None:
+        if user is None or user.role != UserRole.ADMIN or user.password_hash is None:
+            # Only the operator signs in; everyone else fails exactly like a wrong password.
             verify_password(_DUMMY_HASH, password)
             return None
         if not verify_password(user.password_hash, password) or user.disabled_at is not None:
@@ -247,7 +246,7 @@ class UserService:
         Returns:
             None. Raises Unauthorized on a wrong password.
         """
-        if not verify_password(user.password_hash, password):
+        if user.password_hash is None or not verify_password(user.password_hash, password):
             raise Unauthorized("Wrong password", code="wrong_password")
         user.totp_enabled = False
         user.totp_secret = None
@@ -255,41 +254,19 @@ class UserService:
         await audit.record(self.db, "mfa.totp_disabled", user_id=user.id)
         await self.db.flush()
 
-    async def request_password_reset(self, email: str, mail: SystemMailService) -> None:
-        """Email a reset link if the account exists; silent otherwise.
+    async def set_password(self, username: str, password: str) -> User:
+        """Set the operator's password (server-side reset; there is no emailed reset link).
 
         Args:
-            email: Account email.
-            mail: System mail service.
+            username: Operator username.
+            password: New plaintext password.
         Returns:
-            None.
+            The user. Raises NotFound when no operator has that username.
         """
-        assert self.redis is not None
-        user = await self.get_by_email(email)
-        if user is None or user.disabled_at is not None:
-            return
-        token = secrets.token_urlsafe(32)
-        await self.redis.set(
-            _RESET_KEY.format(digest=token_digest(token)), str(user.id), ex=RESET_TTL_SECONDS
-        )
-        await audit.record(self.db, "password.reset_requested", user_id=user.id)
-        await mail.send("password_reset", user.email, link=mail.link(f"/reset/{token}"))
-
-    async def confirm_password_reset(self, token: str, password: str) -> User:
-        """Set a new password from a reset token (single use).
-
-        Args:
-            token: Token from the reset link.
-            password: New password.
-        Returns:
-            The user. Raises NotFound for invalid/expired tokens.
-        """
-        assert self.redis is not None
         check_password_policy(password)
-        user_id = await self.redis.getdel(_RESET_KEY.format(digest=token_digest(token)))
-        user = await self.db.get(User, uuid.UUID(str(user_id))) if user_id else None
-        if user is None:
-            raise NotFound("Reset link is invalid or expired", code="invalid_token")
+        user = await self.get_by_username(username)
+        if user is None or user.role != UserRole.ADMIN:
+            raise NotFound("No operator account with that username")
         user.password_hash = hash_password(password)
         await audit.record(self.db, "password.reset", user_id=user.id)
         await self.db.flush()

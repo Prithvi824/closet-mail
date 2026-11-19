@@ -20,12 +20,14 @@ from mailalias.mail.handlers.forward import ForwardHandler
 from mailalias.mail.processor import parse_message
 from mailalias.mail.transform.headers import NOTICE_HEADER
 from mailalias.mail.types import HandlerResult, InboundEnvelope, Outcome
-from mailalias.models import AliasState, QuarantineItem
+from mailalias.models import AliasState, QuarantineItem, UsageDaily
 from mailalias.security.crypto import decrypt_bytes
 from mailalias.services.quarantine import RELEASE_TASK, QuarantineService
 from mailalias.services.system_mail import SystemMailService
 from tests.eml import EML_DIR
-from tests.integration.harness import Harness, mail_logs, make_harness
+from tests.integration.harness import Harness, mail_logs, make_harness, sub
+
+BASE = sub("pia", "")  # this file's subdomain scope
 
 pytestmark = pytest.mark.usefixtures("dispatched")
 GTUBE = "XJS*C4JBQADN1.NSBN3*2IDNEN*GTUBE-STANDARD-ANTI-UBE-TEST-EMAIL*C.34X"
@@ -164,6 +166,21 @@ async def test_release_delivers_once_and_keeps_copy_when_alias_inactive(
     assert len(h.mailer.sent) == 1 and h.spam.calls == [h.spam.calls[0]]
 
 
+async def test_released_mail_counts_as_received_once(session: AsyncSession) -> None:
+    """A released held message counts once as received, once quarantined, once delivered."""
+    h = await make_harness(session)
+    h.spam.score = 8.0
+    h.enqueue("real_inbound_gmail.eml")
+    await h.processor.run_once()
+    (item,) = await _items(session, h)
+    assert (await _release(session, h, item)).outcome == Outcome.DELIVERED  # type: ignore[union-attr]
+    rows = (await session.scalars(select(UsageDaily).where(UsageDaily.user_id == h.user.id))).all()
+    columns = ("received", "quarantined", "forwards")
+    assert tuple(sum(getattr(row, column) for row in rows) for column in columns) == (1, 1, 1)
+    reasons = sorted(log.reason or "" for log in await mail_logs(session, h))
+    assert reasons == ["released", "spam"]
+
+
 @pytest.mark.usefixtures("relaxed_rate_limits")
 async def test_quarantine_api(
     app: FastAPI,
@@ -180,15 +197,15 @@ async def test_quarantine_api(
     await h.processor.run_once()
     login = await client.post("/api/v1/auth/login", json={"username": "pia", "password": "x" * 12})
     assert login.status_code == 200
-    listed = (await client.get("/api/v1/quarantine")).json()
+    listed = (await client.get(f"{BASE}/quarantine")).json()
     assert len(listed) == 2 and listed[0]["alias_address"] == h.alias.address
     first, second = listed[0]["id"], listed[1]["id"]
-    released = await client.post(f"/api/v1/quarantine/{first}/release")
+    released = await client.post(f"{BASE}/quarantine/{first}/release")
     assert released.status_code == 202
     assert (RELEASE_TASK, first) in dispatched
-    assert (await client.delete(f"/api/v1/quarantine/{second}")).status_code == 204
+    assert (await client.delete(f"{BASE}/quarantine/{second}")).status_code == 204
     assert len(h.store.objects) == 1
-    missing = await client.post(f"/api/v1/quarantine/{second}/release")
+    missing = await client.post(f"{BASE}/quarantine/{second}/release")
     assert missing.status_code == 404
 
 

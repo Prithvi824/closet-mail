@@ -1,4 +1,4 @@
-"""Security audit log (logins, MFA changes, invites, resets, admin actions)."""
+"""Security audit log (logins, MFA changes, password resets, operator actions)."""
 
 # 1st party imports
 import uuid

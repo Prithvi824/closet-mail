@@ -1,4 +1,4 @@
-"""Health monitor: turn bad health numbers into admin email alerts (deduplicated for 6 hours)."""
+"""Health monitor: turn bad health numbers into operator email alerts (deduplicated for 6 h)."""
 
 # 1st party imports
 import logging
@@ -14,8 +14,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from mailalias.config import Settings
 from mailalias.integrations.cloudflare_queue import CloudflareQueueAdmin
 from mailalias.mail.types import MailKind, Outcome
-from mailalias.models import FailedDelivery, FailureKind, MailLog, User, UserRole
-from mailalias.services.admin import AdminService
+from mailalias.models import (
+    FailedDelivery,
+    FailureKind,
+    MailLog,
+    SubdomainState,
+    SubdomainStatus,
+    User,
+)
+from mailalias.services.notices import operator_addresses
+from mailalias.services.operator import OperatorService
+from mailalias.services.quota import share_key, share_limit
 from mailalias.services.system_mail import SystemMailService
 
 logger = logging.getLogger(__name__)
@@ -61,10 +70,61 @@ async def bounce_rate_24h(db: AsyncSession) -> tuple[int, int]:
     return int(bounces or 0), int(sends or 0)
 
 
+async def subdomain_alerts(db: AsyncSession, settings: Settings, redis: Redis) -> list[Alert]:
+    """Per-subdomain problems: routing missing, no inbox to forward to, send share used up.
+
+    Args:
+        db, settings, redis: Session, settings (default share), Redis (today's sends).
+    Returns:
+        Alerts keyed sub:<label>:<problem>; suspended and retired subdomains are skipped.
+    """
+    rows = (
+        await db.execute(
+            select(User, SubdomainStatus.state)
+            .outerjoin(SubdomainStatus, SubdomainStatus.user_id == User.id)
+            .where(User.retired_at.is_(None), User.disabled_at.is_(None))
+            .order_by(User.username)
+        )
+    ).all()
+    sends = await redis.mget([share_key(user.id) for user, _ in rows]) if rows else []
+    alerts: list[Alert] = []
+    for (user, state), sent in zip(rows, sends, strict=True):
+        label = user.username
+        if state == SubdomainState.DNS_MISSING:
+            alerts.append(
+                Alert(
+                    f"sub:{label}:dns_missing",
+                    f"{label}: Cloudflare routing is missing",
+                    f"Mail to {label}.{settings.alias_domain} is not reaching Cloudflare Email "
+                    "Routing. Add the subdomain under Email Routing → Settings → Subdomains.",
+                )
+            )
+        elif state == SubdomainState.NO_INBOX:
+            alerts.append(
+                Alert(
+                    f"sub:{label}:no_inbox",
+                    f"{label}: no inbox to forward to",
+                    f"{label} has no verified default inbox, so mail to aliases without an inbox "
+                    "ticked is dropped. Verify or mark an inbox as default.",
+                )
+            )
+        limit = share_limit(settings, user.limits)
+        if int(sent or 0) >= limit:
+            alerts.append(
+                Alert(
+                    f"sub:{label}:share",
+                    f"{label}: daily send share used up",
+                    f"{label} sent {limit} messages today, its whole share. Its mail waits until "
+                    "midnight UTC unless you raise its sends per day.",
+                )
+            )
+    return alerts
+
+
 async def collect_alerts(
     db: AsyncSession, settings: Settings, redis: Redis, queues: CloudflareQueueAdmin
 ) -> list[Alert]:
-    """Check processor liveness, the DLQ, the send cap and the bounce rate.
+    """Check processor liveness, the DLQ, the send cap, the bounce rate and every subdomain.
 
     Args:
         db: Session.
@@ -74,7 +134,7 @@ async def collect_alerts(
     Returns:
         Current alerts (may be empty).
     """
-    health = await AdminService(db, settings, redis).health(queues)
+    health = await OperatorService(db, settings, redis).health(queues)
     alerts: list[Alert] = []
     age = health.heartbeat_age_seconds
     if age is None or age > HEARTBEAT_STALE_SECONDS:
@@ -93,7 +153,7 @@ async def collect_alerts(
                 "dlq",
                 f"{health.dlq_backlog} message(s) in the dead-letter queue",
                 "Jobs failed 5 times and moved to the dead-letter queue, which keeps them for one "
-                "day. Fix the cause, then use Admin → Health → Retry.",
+                "day. Fix the cause, then use Health → Retry in the console.",
             )
         )
     if health.sends_today >= health.send_cap * SEND_CAP_WARN_RATIO:
@@ -115,13 +175,14 @@ async def collect_alerts(
                 "A high bounce rate can get the sending account suspended.",
             )
         )
+    alerts.extend(await subdomain_alerts(db, settings, redis))
     return alerts
 
 
 async def send_alerts(
     db: AsyncSession, redis: Redis, system_mail: SystemMailService, alerts: list[Alert]
 ) -> int:
-    """Email every enabled admin about each alert not already sent in the last 6 hours.
+    """Email the operator about each alert not already sent in the last 6 hours.
 
     Args:
         db: Session.
@@ -133,17 +194,13 @@ async def send_alerts(
     """
     if not alerts:
         return 0
-    admins = [
-        admin
-        for admin in await db.scalars(select(User).where(User.role == UserRole.ADMIN))
-        if admin.disabled_at is None
-    ]
+    operators = await operator_addresses(db)
     sent = 0
     for alert in alerts:
         if not await redis.set(f"alert:{alert.key}", "1", nx=True, ex=ALERT_DEDUP_SECONDS):
             continue
-        for admin in admins:
-            await system_mail.send("notice", admin.email, subject=alert.subject, body=alert.body)
-        logger.warning("alert sent", extra={"alert": alert.key, "admins": len(admins)})
+        for address in operators:
+            await system_mail.send("notice", address, subject=alert.subject, body=alert.body)
+        logger.warning("alert sent", extra={"alert": alert.key, "operators": len(operators)})
         sent += 1
     return sent

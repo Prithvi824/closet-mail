@@ -18,9 +18,10 @@ class RecipientCreate(BaseModel):
 
 
 class RecipientUpdate(BaseModel):
-    """Enable or disable a recipient."""
+    """Enable/disable a recipient or change its default flag; omitted fields are unchanged."""
 
-    disabled: bool
+    disabled: bool | None = None
+    forward_by_default: bool | None = None
 
 
 class PgpKeyUpdate(BaseModel):
@@ -37,18 +38,17 @@ class RecipientResponse(BaseModel):
     email: str
     verified: bool
     disabled: bool
-    is_default: bool
+    forward_by_default: bool
     pgp_fingerprint: str | None
     pgp_protect_subject: bool
     created_at: datetime
 
     @classmethod
-    def build(cls, recipient: Recipient, default_id: uuid.UUID | None) -> "RecipientResponse":
+    def build(cls, recipient: Recipient) -> "RecipientResponse":
         """Map a model to the response.
 
         Args:
             recipient: Recipient row.
-            default_id: The owner's default recipient id.
         Returns:
             The response model.
         """
@@ -57,7 +57,7 @@ class RecipientResponse(BaseModel):
             email=recipient.email,
             verified=recipient.verified_at is not None,
             disabled=recipient.disabled_at is not None,
-            is_default=recipient.id == default_id,
+            forward_by_default=recipient.forward_by_default,
             pgp_fingerprint=recipient.pgp_fingerprint,
             pgp_protect_subject=recipient.pgp_protect_subject,
             created_at=recipient.created_at,

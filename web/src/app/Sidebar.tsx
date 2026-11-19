@@ -1,10 +1,13 @@
-import { NavLink } from "react-router";
+import { NavLink, useMatch } from "react-router";
 
-import { ADMIN_NAV, MAIN_NAV, type NavItem } from "@/app/navigation";
+import { OPERATOR_NAV, SUBDOMAIN_NAV, type NavItem } from "@/app/navigation";
+import { SubdomainSwitcher } from "@/features/subdomains/SubdomainSwitcher";
+import { subdomainPage } from "@/lib/paths";
 import { cn } from "@/lib/utils";
 
 interface SidebarProps {
-  isAdmin: boolean;
+  /** The operator's own label, used when no subdomain is open. */
+  operatorLabel: string;
   /** Called after a link is chosen (closes the mobile sheet). */
   onNavigate?: () => void;
 }
@@ -45,12 +48,16 @@ function NavSection({ title, items, onNavigate }: NavSectionProps) {
   );
 }
 
-/** App navigation; the admin section only renders for admins. */
-export function Sidebar({ isAdmin, onNavigate }: SidebarProps) {
+/** Operator pages, then the subdomain switcher and the open subdomain's sections. */
+export function Sidebar({ operatorLabel, onNavigate }: SidebarProps) {
+  const label = useMatch("/s/:label/*")?.params.label ?? operatorLabel;
+  const scoped = SUBDOMAIN_NAV.map((item) => ({ ...item, to: subdomainPage(label, item.to) }));
+
   return (
     <nav aria-label="Main" className="flex flex-col p-3">
-      <NavSection items={MAIN_NAV} onNavigate={onNavigate} />
-      {isAdmin ? <NavSection title="Admin" items={ADMIN_NAV} onNavigate={onNavigate} /> : null}
+      <NavSection items={OPERATOR_NAV} onNavigate={onNavigate} />
+      <SubdomainSwitcher label={label} onNavigate={onNavigate} />
+      <NavSection items={scoped} onNavigate={onNavigate} />
     </nav>
   );
 }

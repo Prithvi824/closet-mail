@@ -1,11 +1,17 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
-import type { Activity } from "@/lib/api";
+import { useSubdomainLabel } from "@/features/subdomains/useSubdomainLabel";
+import type { SubdomainActivity } from "@/lib/api";
 import { http } from "@/lib/http";
+import { sub } from "@/lib/paths";
 
-export function useActivity(days: number) {
+/** The open subdomain's activity over `days` days, with one page of recent mail. */
+export function useActivity(days: number, page: number) {
+  const label = useSubdomainLabel();
   return useQuery({
-    queryKey: ["activity", days],
-    queryFn: async () => (await http.get<Activity>("/me/activity", { params: { days } })).data,
+    queryKey: ["s", label, "activity", days, page],
+    queryFn: async () =>
+      (await http.get<SubdomainActivity>(sub(label, "/activity"), { params: { days, page } })).data,
+    placeholderData: keepPreviousData,
   });
 }

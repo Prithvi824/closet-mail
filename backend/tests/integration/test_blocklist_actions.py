@@ -12,7 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # local imports
 from mailalias.mail.types import Outcome
 from mailalias.models import AliasState, Contact
-from tests.integration.harness import Harness, mail_logs, make_harness
+from tests.integration.harness import Harness, mail_logs, make_harness, sub
+
+BASE = sub("pia", "")  # this file's subdomain scope
 
 pytestmark = pytest.mark.usefixtures("dispatched", "relaxed_rate_limits")
 ACTION_URL_RE = re.compile(
@@ -52,17 +54,17 @@ async def test_blocklist_api(client: httpx.AsyncClient, session: AsyncSession) -
     """Add (normalised), refuse duplicates and junk, list, delete."""
     await make_harness(session)
     await _login(client)
-    created = await client.post("/api/v1/blocklist", json={"pattern": "@Example.NET"})
+    created = await client.post(f"{BASE}/blocklist", json={"pattern": "@Example.NET"})
     assert created.status_code == 201
     assert (created.json()["pattern"], created.json()["kind"]) == ("example.net", "domain")
-    duplicate = await client.post("/api/v1/blocklist", json={"pattern": "example.net"})
+    duplicate = await client.post(f"{BASE}/blocklist", json={"pattern": "example.net"})
     assert duplicate.status_code == 409
-    junk = await client.post("/api/v1/blocklist", json={"pattern": "not a domain"})
+    junk = await client.post(f"{BASE}/blocklist", json={"pattern": "not a domain"})
     assert junk.status_code == 422
-    assert [e["pattern"] for e in (await client.get("/api/v1/blocklist")).json()] == ["example.net"]
-    deleted = await client.delete(f"/api/v1/blocklist/{created.json()['id']}")
+    assert [e["pattern"] for e in (await client.get(f"{BASE}/blocklist")).json()] == ["example.net"]
+    deleted = await client.delete(f"{BASE}/blocklist/{created.json()['id']}")
     assert deleted.status_code == 204
-    assert (await client.get("/api/v1/blocklist")).json() == []
+    assert (await client.get(f"{BASE}/blocklist")).json() == []
 
 
 async def test_blocked_domain_is_not_forwarded_and_creates_no_contact(
@@ -71,7 +73,7 @@ async def test_blocked_domain_is_not_forwarded_and_creates_no_contact(
     """A blocked parent domain blocks its subdomains; no contact or spam check happens."""
     h = await make_harness(session)
     await _login(client)
-    await client.post("/api/v1/blocklist", json={"pattern": "example.net"})
+    await client.post(f"{BASE}/blocklist", json={"pattern": "example.net"})
     h.enqueue(
         "fwd_alternative.eml",
         **{"From: Bob <bob@example.net>": "From: Bob <bob@mail.example.net>"},

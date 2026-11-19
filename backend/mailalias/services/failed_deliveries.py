@@ -15,14 +15,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from mailalias.mail.types import MailKind
 from mailalias.models import (
     Alias,
+    DeliveryLog,
+    DeliveryStatus,
     FailedDelivery,
     FailureKind,
     MailLog,
     Recipient,
     User,
-    UserRole,
 )
 from mailalias.security.crypto import lookup_hash
+from mailalias.services.notices import operator_addresses
 from mailalias.services.system_mail import SystemMailService
 
 logger = logging.getLogger(__name__)
@@ -34,6 +36,18 @@ EVENT_KINDS = {
     "email.delivery_delayed": FailureKind.DELAYED,
     "email.suppressed": FailureKind.SUPPRESSED,
 }
+# Resend event -> status of the matching send (delivery_log row).
+EVENT_STATUSES = {
+    "email.delivered": DeliveryStatus.DELIVERED,
+    "email.bounced": DeliveryStatus.BOUNCED,
+    "email.complained": DeliveryStatus.COMPLAINED,
+    "email.delivery_delayed": DeliveryStatus.DELAYED,
+    "email.suppressed": DeliveryStatus.BOUNCED,
+}
+# A late "delayed" event must not hide an outcome that is already known.
+FINAL_STATUSES = frozenset(
+    {DeliveryStatus.DELIVERED, DeliveryStatus.BOUNCED, DeliveryStatus.COMPLAINED}
+)
 DETAIL_MAX_CHARS = 1000
 LIST_LIMIT = 200
 
@@ -92,18 +106,18 @@ class FailedDeliveryService:
         query = select(MailLog).where(MailLog.provider_id == provider_id).limit(1)
         return await self.db.scalar(query)
 
-    async def recipients_for(self, address: str, user_id: uuid.UUID | None) -> list[Recipient]:
-        """Recipients with this address (only the given user's when known).
+    async def recipients_for(self, address: str, user_id: uuid.UUID) -> list[Recipient]:
+        """One subdomain's recipients with this address (never matched across subdomains).
 
         Args:
             address: Bounced address.
-            user_id: Owner, if the message could be traced.
+            user_id: Owner the message was traced to.
         Returns:
-            Matching recipients (several users may share an address).
+            Matching recipients of that owner.
         """
-        query = select(Recipient).where(Recipient.email_hash == lookup_hash(address))
-        if user_id is not None:
-            query = query.where(Recipient.user_id == user_id)
+        query = select(Recipient).where(
+            Recipient.email_hash == lookup_hash(address), Recipient.user_id == user_id
+        )
         return list(await self.db.scalars(query))
 
     async def record(
@@ -144,27 +158,106 @@ class FailedDeliveryService:
         return entry
 
     async def record_email_event(self, event_id: str, event: dict[str, Any]) -> int:
-        """Record a verified Resend webhook event (bounce, complaint, delay, suppression).
+        """Apply a verified Resend event to its send, recording failures against that inbox.
 
         Args:
             event_id: svix-id header (de-duplicates retries).
             event: Parsed payload: {"type", "data": {"email_id", "to", "bounce": {...}}}.
         Returns:
-            Number of failure rows written (0 for duplicates or ignored event types).
+            Number of failure rows written (0 for duplicates, deliveries or ignored types).
         """
+        event_type = str(event.get("type", ""))
         data = event.get("data") or {}
-        kind = _event_kind(str(event.get("type", "")), data)
+        kind = _event_kind(event_type, data)
+        email_id = str(data.get("email_id", ""))
+        delivery = await self._delivery_for(email_id) if email_id else None
+        if delivery is not None:
+            self._apply_status(delivery, EVENT_STATUSES.get(event_type))
+            if kind is None:
+                await self.db.flush()
+                return 0
+            return await self._record_for_delivery(delivery, kind, event_id, _event_detail(data))
         recipients_to = data.get("to") or []
         if kind is None or not recipients_to:
             return 0
-        log = await self.log_for_provider_id(str(data.get("email_id", "")))
+        return await self._record_untraced(
+            email_id, kind, str(recipients_to[0]), event_id, _event_detail(data)
+        )
+
+    async def _delivery_for(self, provider_id: str) -> DeliveryLog | None:
+        """The send with this provider id, locked so concurrent events apply in turn.
+
+        Args:
+            provider_id: Resend email id.
+        Returns:
+            The delivery row, or None (older mail, or not ours).
+        """
+        query = select(DeliveryLog).where(DeliveryLog.provider_id == provider_id).with_for_update()
+        return await self.db.scalar(query)
+
+    @staticmethod
+    def _apply_status(delivery: DeliveryLog, status: DeliveryStatus | None) -> None:
+        """Move a send to the event's status, never back from a final one to "delayed".
+
+        Args:
+            delivery: The send.
+            status: New status (None for events that carry none).
+        Returns:
+            None.
+        """
+        if status is None:
+            return
+        if status == DeliveryStatus.DELAYED and delivery.status in FINAL_STATUSES:
+            return
+        delivery.status = status
+        delivery.status_at = datetime.now(UTC)
+
+    async def _record_for_delivery(
+        self, delivery: DeliveryLog, kind: FailureKind, event_id: str, detail: str | None
+    ) -> int:
+        """Record a failure of one traced send; only a forward's inbox counts toward disabling.
+
+        Args:
+            delivery: The send the event is about.
+            kind, event_id, detail: Failure type, svix-id and provider text.
+        Returns:
+            1 when a row was written, else 0.
+        """
+        log = await self.db.get(MailLog, delivery.mail_log_id)
+        alias_id = log.alias_id if log else None
+        recipient = (
+            await self.db.get(Recipient, delivery.recipient_id)
+            if delivery.recipient_id and log is not None and log.kind == MailKind.FORWARD
+            else None
+        )
+        entry = await self.record(
+            kind,
+            user_id=delivery.user_id,
+            alias_id=alias_id,
+            recipient=recipient,
+            provider_event_id=event_id,
+            detail=detail,
+        )
+        return int(entry is not None)
+
+    async def _record_untraced(
+        self, email_id: str, kind: FailureKind, address: str, event_id: str, detail: str | None
+    ) -> int:
+        """Fallback for sends logged before delivery rows existed: match within that owner only.
+
+        Args:
+            email_id: Resend email id (matched against the legacy mail_log.provider_id).
+            kind, address, event_id, detail: Failure type, failed address, svix-id, text.
+        Returns:
+            Number of failure rows written.
+        """
+        log = await self.log_for_provider_id(email_id) if email_id else None
         user_id, alias_id = (log.user_id, log.alias_id) if log else (None, None)
-        detail = _event_detail(data)
         # A bounced reply concerns the correspondent, never the owner's recipients.
         matches = (
-            []
-            if log and log.kind == MailKind.REPLY
-            else await self.recipients_for(str(recipients_to[0]), user_id)
+            await self.recipients_for(address, user_id)
+            if log is not None and user_id is not None and log.kind == MailKind.FORWARD
+            else []
         )
         if not matches:
             entry = await self.record(
@@ -173,7 +266,6 @@ class FailedDeliveryService:
             return int(entry is not None)
         written = 0
         for index, recipient in enumerate(matches):
-            # Several users can share an address; only the first row carries the event id.
             event_key = event_id if index == 0 else f"{event_id}:{recipient.id}"
             entry = await self.record(
                 kind,
@@ -222,31 +314,24 @@ class FailedDeliveryService:
         await self._notify_disabled(recipient)
 
     async def _notify_disabled(self, recipient: Recipient) -> None:
-        """Tell the user (other usable recipients, else the admins) that forwarding stopped.
+        """Tell the operator that forwarding to an inbox stopped (never the inbox itself).
 
         Args:
-            recipient: The recipient just disabled (never mailed itself).
+            recipient: The recipient just disabled.
         Returns:
             None.
         """
-        others = await self.db.scalars(
-            select(Recipient).where(
-                Recipient.user_id == recipient.user_id, Recipient.id != recipient.id
-            )
-        )
-        targets = [r.email for r in others if r.is_usable]
-        if not targets:
-            admins = await self.db.scalars(select(User).where(User.role == UserRole.ADMIN))
-            targets = [admin.email for admin in admins if admin.disabled_at is None]
-        for address in dict.fromkeys(targets):
+        owner = await self.db.get(User, recipient.user_id)
+        label = owner.username if owner else "a subdomain"
+        for address in await operator_addresses(self.db):
             await self.system_mail.send(
                 "notice",
                 address,
-                subject="A forwarding address was disabled",
+                subject=f"An inbox of {label} was disabled",
                 body=(
                     f"Mail to {recipient.email} bounced {HARD_BOUNCE_LIMIT} times in a row, so "
-                    "forwarding to it has been turned off. Fix the mailbox, then re-enable it "
-                    "from the Recipients page."
+                    f"forwarding to it has been turned off for {label}. Fix the mailbox, then "
+                    "re-enable it from that subdomain's Inboxes page."
                 ),
             )
 

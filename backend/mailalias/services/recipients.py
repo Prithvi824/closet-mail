@@ -151,7 +151,7 @@ class RecipientService:
         return recipient
 
     async def _ensure_not_last_usable(self, user: User, recipient: Recipient) -> None:
-        """Refuse to remove/disable the user's only usable recipient.
+        """Refuse to remove/disable the user's only usable recipient or only usable default.
 
         Args:
             user: Owner.
@@ -164,8 +164,46 @@ class RecipientService:
         others = [r for r in await self.list_for(user) if r.id != recipient.id and r.is_usable]
         if not others:
             raise ValidationFailed("You must keep at least one verified recipient")
-        if user.default_recipient_id == recipient.id:
-            user.default_recipient_id = others[0].id
+        await self._ensure_not_last_default(user, recipient, others)
+
+    async def _ensure_not_last_default(
+        self, user: User, recipient: Recipient, others: list[Recipient] | None = None
+    ) -> None:
+        """Refuse a change that would leave no usable default inbox.
+
+        Args:
+            user: Owner.
+            recipient: Inbox about to stop being a usable default.
+            others: The owner's other usable inboxes (loaded when None).
+        Returns:
+            None. Raises ValidationFailed (code last_default_inbox).
+        """
+        if not (recipient.is_usable and recipient.forward_by_default):
+            return
+        if others is None:
+            others = [r for r in await self.list_for(user) if r.id != recipient.id and r.is_usable]
+        if not any(r.forward_by_default for r in others):
+            raise ValidationFailed(
+                "Keep at least one default inbox: mark another inbox as default first",
+                code="last_default_inbox",
+            )
+
+    async def set_default(self, user: User, recipient_id: uuid.UUID, flag: bool) -> Recipient:
+        """Mark or unmark an inbox as a default (aliases with no inbox ticked go to all defaults).
+
+        Args:
+            user: Owner.
+            recipient_id: Recipient id.
+            flag: New value.
+        Returns:
+            The recipient.
+        """
+        recipient = await self.get_owned(user, recipient_id)
+        if not flag and recipient.forward_by_default:
+            await self._ensure_not_last_default(user, recipient)
+        recipient.forward_by_default = flag
+        await self.db.flush()
+        return recipient
 
     async def set_disabled(self, user: User, recipient_id: uuid.UUID, disabled: bool) -> Recipient:
         """Enable or disable forwarding to a recipient.
@@ -198,9 +236,6 @@ class RecipientService:
         """
         recipient = await self.get_owned(user, recipient_id)
         await self._ensure_not_last_usable(user, recipient)
-        if user.default_recipient_id == recipient.id:
-            user.default_recipient_id = None
-        await self.db.flush()
         await self.db.delete(recipient)
         await self.db.flush()
 

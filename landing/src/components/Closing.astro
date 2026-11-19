@@ -1,6 +1,6 @@
 ---
 /** Closing call to action and footer. */
-import InviteLink from "./InviteLink.astro";
+import ContactLink from "./ContactLink.astro";
 import Logo from "./Logo.astro";
 import { SITE } from "@/lib/site";
 ---
@@ -17,15 +17,15 @@ import { SITE } from "@/lib/site";
       Keep your real address <em>to yourself.</em>
     </h2>
     <p class="lede mx-auto">
-      closet-mail is invite only. Ask for an invite and you'll get a link to set up your account. Prefer your own
-      server? The source is on GitHub.
+      closet-mail is run by one operator for the people they serve. Get in touch and you'll get your own
+      subdomain, with mail forwarded to your inbox. Prefer your own server? The source is on GitHub.
     </p>
     <div class="flex flex-wrap justify-center gap-3">
-      <InviteLink />
+      <ContactLink />
       <a class="btn btn-ghost" href={SITE.repoUrl}>Run your own</a>
     </div>
     <p class="text-[13px] text-dim">
-      Mail app didn't open? Write to <span class="font-mono text-muted select-all">{SITE.inviteEmail}</span>
+      Mail app didn't open? Write to <span class="font-mono text-muted select-all">{SITE.contactEmail}</span>
     </p>
   </div>
 </section>

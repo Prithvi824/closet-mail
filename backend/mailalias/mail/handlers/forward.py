@@ -3,6 +3,8 @@
 # 1st party imports
 import asyncio
 import logging
+import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from email.message import EmailMessage
@@ -32,7 +34,8 @@ from mailalias.services import mail_log
 from mailalias.services.aliases import AliasService
 from mailalias.services.blocklist import BlocklistService
 from mailalias.services.contacts import ContactService
-from mailalias.services.notices import notify_owner
+from mailalias.services.mail_log import RELEASED, DeliveryRecord
+from mailalias.services.notices import operator_addresses, send_notice
 from mailalias.services.quarantine import QuarantineService, subject_of
 from mailalias.services.quota import QuotaService, cap_retry_delay
 from mailalias.services.system_mail import SystemMailService
@@ -83,6 +86,7 @@ class Delivery:
     name: str | None
     spam_score: float | None
     spam_unchecked: bool  # Rspamd was unavailable: add a notice header
+    released: bool = False  # released from quarantine: already counted as received
 
 
 class ForwardHandler:
@@ -128,14 +132,18 @@ class ForwardHandler:
         contact: Contact | None = None,
         provider_id: str | None = None,
         spam_score: float | None = None,
+        *,
+        sender: str | None = None,
+        user_id: uuid.UUID | None = None,
+        deliveries: Sequence[DeliveryRecord] = (),
+        count_usage: bool = True,
     ) -> HandlerResult:
         """Write the mail log, commit, and build the result.
 
         Args:
-            outcome, reason: What happened.
-            env: Envelope (size).
-            alias, contact: Resolved objects, if any.
-            provider_id, spam_score: Provider id of the first delivery; Rspamd score.
+            outcome, reason, env, alias, contact: What happened, envelope, resolved objects.
+            provider_id, spam_score, deliveries: First send's id, Rspamd score, one record per send.
+            sender, user_id, count_usage: Sender address, owner when no alias, False on redelivery.
         Returns:
             The HandlerResult.
         """
@@ -144,12 +152,16 @@ class ForwardHandler:
             kind=MailKind.FORWARD,
             outcome=outcome,
             reason=reason,
-            user_id=alias.user_id if alias else None,
+            user_id=alias.user_id if alias else user_id,
             alias_id=alias.id if alias else None,
             contact_id=contact.id if contact else None,
             size_bytes=env.raw_size,
             provider_id=provider_id,
             spam_score=spam_score,
+            received_at=env.received_at,
+            sender_address=sender,
+            deliveries=deliveries,
+            count_usage=count_usage,
         )
         await self.db.commit()
         return HandlerResult(outcome, reason)
@@ -184,18 +196,21 @@ class ForwardHandler:
         alias: Alias,
         contact: Contact,
         score: float | None,
+        sender: str,
     ) -> HandlerResult | None:
         """Discard or quarantine spam (and DMARC failures of p=reject domains).
 
         Args:
             env, msg, raw: The inbound message.
             alias, contact: Resolved objects.
-            score: Rspamd score, or None if unavailable.
+            score, sender: Rspamd score (None if unavailable); sender address.
         Returns:
             A final result when the message was discarded or held, else None (deliver).
         """
         if score is not None and score >= self.settings.spam_discard_score:
-            return await self._log(Outcome.DISCARDED, "spam", env, alias, contact, None, score)
+            return await self._log(
+                Outcome.DISCARDED, "spam", env, alias, contact, None, score, sender=sender
+            )
         auth = auth_results.parse(msg)
         dmarc_reject = auth.dmarc == "fail" and auth.dmarc_policy == "reject"
         spam = score is not None and score >= self.settings.spam_quarantine_score
@@ -211,44 +226,61 @@ class ForwardHandler:
             score=score if score is not None else 0.0,
         )
         reason = "spam" if spam else "dmarc_reject"
-        return await self._log(Outcome.QUARANTINED, reason, env, alias, contact, None, score)
+        return await self._log(
+            Outcome.QUARANTINED, reason, env, alias, contact, None, score, sender=sender
+        )
 
-    async def _resolve_alias(self, address: str) -> Alias | None:
-        """Load the alias, auto-creating it on a personal subdomain with catch-all on.
+    async def _subdomain_owner(self, domain: str) -> User | None:
+        """The subdomain (user) whose label is the first label of a personal-subdomain domain.
+
+        Args:
+            domain: Recipient domain, e.g. "acme.closetcompute.online".
+        Returns:
+            The user, or None for the shared domain or an unknown label.
+        """
+        label = domain.removesuffix("." + self.settings.alias_domain)
+        if label == domain:
+            return None
+        return await self.db.scalar(select(User).where(User.username == label))
+
+    async def _resolve_alias(self, address: str) -> tuple[Alias | None, str]:
+        """Load the alias, auto-creating it on a subdomain with catch-all on (capped per day).
 
         Args:
             address: Normalised recipient address.
         Returns:
-            The alias with recipients loaded, or None.
+            (alias with recipients loaded, or None; drop reason when None).
         """
         query = (
             select(Alias).options(selectinload(Alias.recipients)).where(Alias.address == address)
         )
         alias = await self.db.scalar(query)
         if alias is not None:
-            return alias
+            return alias, ""
         local, domain = split_address(address)
-        username = domain.removesuffix("." + self.settings.alias_domain)
-        if username == domain:
-            return None
-        owner = await self.db.scalar(select(User).where(User.username == username))
+        owner = await self._subdomain_owner(domain)
         if owner is None or not owner.subdomain_catchall or owner.disabled_at is not None:
-            return None
+            return None, "unknown_alias"
+        # A daily cap (not the hourly UI limit) keeps a spam run from flooding alias rows and KV.
+        if not await self.quota.consume_catchall(owner.id, owner.limits):
+            await self._notify_catchall_limit(owner)
+            return None, "catchall_limit"
         try:
+            # Catch-all creation follows incoming mail, so the hourly create limit does not apply.
             await AliasService(self.db, self.settings, self.redis).create(
-                owner, local_part=local, subdomain=True
+                owner, local_part=local, subdomain=True, enforce_rate=False
             )
         except Conflict:
             # Another message for the same new address created it first; load that one below.
             pass
         except DomainError as exc:
             logger.info("catch-all alias not created", extra={"code": exc.code})
-            return None
+            return None, "unknown_alias"
         await self.db.commit()
-        return await self.db.scalar(query.execution_options(populate_existing=True))
+        return await self.db.scalar(query.execution_options(populate_existing=True)), ""
 
     async def _recipients(self, alias: Alias, owner: User) -> list[Recipient]:
-        """Usable recipients of the alias, falling back to the owner's default.
+        """Usable recipients of the alias, falling back to all of the owner's default inboxes.
 
         Args:
             alias: Alias with recipients loaded.
@@ -257,9 +289,13 @@ class ForwardHandler:
             Recipients (never on a service domain).
         """
         recipients = [r for r in alias.recipients if r.is_usable]
-        if not recipients and owner.default_recipient_id:
-            default = await self.db.get(Recipient, owner.default_recipient_id)
-            recipients = [default] if default is not None and default.is_usable else []
+        if not recipients:
+            defaults = await self.db.scalars(
+                select(Recipient)
+                .where(Recipient.user_id == owner.id, Recipient.forward_by_default.is_(True))
+                .order_by(Recipient.created_at)
+            )
+            recipients = [r for r in defaults if r.is_usable]
         return [
             r
             for r in recipients
@@ -298,25 +334,81 @@ class ForwardHandler:
         )
 
     async def _notify_quota(self, owner: User) -> None:
-        """Tell the owner (at most once a day) that forwards are being dropped.
+        """Tell the operator (at most once a day per subdomain) that forwards are being dropped.
 
         Args:
-            owner: Alias owner.
+            owner: Alias owner (the subdomain).
         Returns:
             None.
         """
-        await notify_owner(
+        await send_notice(
             self.redis,
             self.system_mail,
-            owner,
+            await operator_addresses(self.db),
             throttle_key=f"quota:{owner.id}:{datetime.now(UTC):%Y%m%d}",
             ttl_seconds=QUOTA_NOTICE_TTL_SECONDS,
-            subject="Forwarding limit reached",
+            subject=f"Forwarding limit reached for {owner.username}",
             body=(
-                "Your hourly forwarding limit was reached, so some messages were not "
-                "forwarded. Forwarding resumes automatically next hour."
+                f"The hourly forwarding limit of {owner.username} was reached, so some "
+                "messages were not forwarded. Forwarding resumes automatically next hour."
             ),
         )
+
+    async def _notify_share(self, owner: User) -> None:
+        """Tell the operator (at most once a day per subdomain) that its send share is used up.
+
+        Args:
+            owner: Alias owner (the subdomain).
+        Returns:
+            None.
+        """
+        await send_notice(
+            self.redis,
+            self.system_mail,
+            await operator_addresses(self.db),
+            throttle_key=f"share:{owner.id}:{datetime.now(UTC):%Y%m%d}",
+            ttl_seconds=QUOTA_NOTICE_TTL_SECONDS,
+            subject=f"Daily send share used up for {owner.username}",
+            body=(
+                f"{owner.username} has used its daily share of sends. Its mail is queued and "
+                "will be delivered after midnight UTC, or sooner if you raise its share."
+            ),
+        )
+
+    async def _notify_catchall_limit(self, owner: User) -> None:
+        """Tell the operator (at most once a day per subdomain) that catch-all mail is dropped.
+
+        Args:
+            owner: The subdomain.
+        Returns:
+            None.
+        """
+        await send_notice(
+            self.redis,
+            self.system_mail,
+            await operator_addresses(self.db),
+            throttle_key=f"catchall:{owner.id}:{datetime.now(UTC):%Y%m%d}",
+            ttl_seconds=QUOTA_NOTICE_TTL_SECONDS,
+            subject=f"Catch-all limit reached for {owner.username}",
+            body=(
+                f"{owner.username} received mail for more new addresses today than its catch-all "
+                "limit allows, so mail to further new addresses is dropped until midnight UTC. "
+                "This usually means a spam run; raise the limit in its settings if it is real mail."
+            ),
+        )
+
+    async def _refund(self, owner_id: uuid.UUID, cost: int) -> None:
+        """Give back every quota a send consumed when it did not happen.
+
+        Args:
+            owner_id: Subdomain id.
+            cost: Sends to give back.
+        Returns:
+            None.
+        """
+        await self.quota.refund_global(cost)
+        await self.quota.refund_share(owner_id, cost)
+        await self.quota.refund_user(owner_id, "forward", cost)
 
     async def handle(
         self,
@@ -336,43 +428,60 @@ class ForwardHandler:
             HandlerResult. Raises RetryableError for infrastructure problems or the global cap.
         """
         address, name = sender_of(env, msg)
-        alias = await self._resolve_alias(normalize(env.rcpt_to))
+        alias, drop_reason = await self._resolve_alias(normalize(env.rcpt_to))
         if alias is None or alias.user_id is None:
-            return await self._log(Outcome.DISCARDED, "unknown_alias", env, alias)
+            # Attribute drops on a known subdomain to it, so its metrics show the lost mail.
+            owner = (
+                None
+                if alias
+                else await self._subdomain_owner(split_address(normalize(env.rcpt_to))[1])
+            )
+            return await self._log(
+                Outcome.DISCARDED,
+                drop_reason or "unknown_alias",
+                env,
+                alias,
+                sender=address,
+                user_id=owner.id if owner else None,
+            )
         if alias.state != AliasState.ACTIVE:
             reason = "alias_inactive" if alias.state == AliasState.INACTIVE else "alias_deleted"
-            return await self._log(Outcome.DISCARDED, reason, env, alias)
+            return await self._log(Outcome.DISCARDED, reason, env, alias, sender=address)
         owner = await self.db.get(User, alias.user_id)
         if owner is None or owner.disabled_at is not None:
-            return await self._log(Outcome.DISCARDED, "user_disabled", env, alias)
+            return await self._log(Outcome.DISCARDED, "user_disabled", env, alias, sender=address)
         # Our own forwards coming back (e.g. a recipient forwarding to an alias) would loop.
         if msg.get(ALIAS_HEADER) or (
             address and is_service_domain(split_address(address)[1], self.settings.reply_domain)
         ):
-            return await self._log(Outcome.DISCARDED, "loop", env, alias)
+            return await self._log(Outcome.DISCARDED, "loop", env, alias, sender=address)
         if not address:
             return await self._log(Outcome.DISCARDED, "no_sender", env, alias)
         recipients = await self._recipients(alias, owner)
         if not recipients:
-            return await self._log(Outcome.DISCARDED, "no_recipient", env, alias)
+            return await self._log(Outcome.DISCARDED, "no_recipient", env, alias, sender=address)
 
         if await BlocklistService(self.db).is_blocked(owner.id, address):
-            return await self._log(Outcome.BLOCKED, "blocklist", env, alias)
+            return await self._log(Outcome.BLOCKED, "blocklist", env, alias, sender=address)
         contact = await ContactService(self.db).get_or_create(alias, address, name)
         # Commit now so the reply token in the delivered mail exists even if a later step fails.
         await self.db.commit()
         if contact.blocked:
-            return await self._log(Outcome.BLOCKED, "contact_blocked", env, alias, contact)
+            return await self._log(
+                Outcome.BLOCKED, "contact_blocked", env, alias, contact, sender=address
+            )
         score: float | None = None
         unchecked = False
         if not skip_spam:
             raw = raw if raw is not None else msg.as_bytes()
             score = await self._spam_score(env, msg, raw)
             unchecked = score is None
-            held = await self._screen(env, msg, raw, alias, contact, score)
+            held = await self._screen(env, msg, raw, alias, contact, score, address)
             if held is not None:
                 return held
-        delivery = Delivery(alias, owner, contact, recipients, address, name, score, unchecked)
+        delivery = Delivery(
+            alias, owner, contact, recipients, address, name, score, unchecked, skip_spam
+        )
         return await self._deliver(env, msg, delivery)
 
     async def _deliver(
@@ -394,15 +503,30 @@ class ForwardHandler:
         cost = len(pending)
         if cost and not await self.quota.global_send_allowed(cost):
             raise RetryableError("global send cap reached", cap_retry_delay())
+        if cost and not await self.quota.check_share(owner.id, cost, owner.limits):
+            # Over its share the subdomain waits like the global cap, so others keep sending.
+            await self.quota.refund_global(cost)
+            await self._notify_share(owner)
+            raise RetryableError("subdomain send share reached", cap_retry_delay())
         if cost and not await self.quota.check_and_consume(
             owner.id, "forward", cost, limits=owner.limits
         ):
             await self.quota.refund_global(cost)
+            await self.quota.refund_share(owner.id, cost)
             await self._notify_quota(owner)
-            return await self._log(Outcome.DISCARDED, "quota", env, alias, contact, None, score)
+            return await self._log(
+                Outcome.DISCARDED,
+                "quota",
+                env,
+                alias,
+                contact,
+                None,
+                score,
+                sender=delivery.address,
+            )
 
         display = sender_display(delivery.address, delivery.name)
-        provider_id: str | None = None
+        records: list[DeliveryRecord] = []
         delivered = len(recipients) - cost
         for index, recipient in enumerate(pending):
             context = self._context(alias, contact, owner, recipient, display)
@@ -416,8 +540,7 @@ class ForwardHandler:
                 # A broken key or unparseable part fails the same way on every retry, so skip this
                 # recipient (never fall back to plaintext) and keep going with the others.
                 logger.exception("forward build failed", extra={"recipient_id": str(recipient.id)})
-                await self.quota.refund_global(1)
-                await self.quota.refund_user(owner.id, "forward", 1)
+                await self._refund(owner.id, 1)
                 continue
             if delivery.spam_unchecked:
                 message[NOTICE_HEADER] = "spam-check-unavailable"
@@ -426,22 +549,38 @@ class ForwardHandler:
                     message, f"{contact.token}@{self.settings.reply_domain}", [recipient.email]
                 )
             except RetryableError:
-                unsent = cost - index
-                await self.quota.refund_global(unsent)
-                await self.quota.refund_user(owner.id, "forward", unsent)
+                await self._refund(owner.id, cost - index)
                 raise
             except PermanentSendError:
                 # The provider's error text may contain addresses, so only ids are logged.
                 logger.warning("forward rejected", extra={"recipient_id": str(recipient.id)})
-                await self.quota.refund_global(1)
-                await self.quota.refund_user(owner.id, "forward", 1)
+                await self._refund(owner.id, 1)
                 continue
-            provider_id = provider_id or sent
+            records.append(DeliveryRecord(recipient.id, sent))
             delivered += 1
             await self.redis.sadd(done_key, str(recipient.id))
             await self.redis.expire(done_key, DONE_TTL_SECONDS)
         if not delivered:
             return await self._log(
-                Outcome.DISCARDED, "send_failed", env, alias, contact, None, score
+                Outcome.DISCARDED,
+                "send_failed",
+                env,
+                alias,
+                contact,
+                None,
+                score,
+                sender=delivery.address,
             )
-        return await self._log(Outcome.DELIVERED, None, env, alias, contact, provider_id, score)
+        # cost == 0: every inbox got it on an earlier attempt, which was already counted.
+        return await self._log(
+            Outcome.DELIVERED,
+            RELEASED if delivery.released else None,
+            env,
+            alias,
+            contact,
+            records[0].provider_id if records else None,
+            score,
+            sender=delivery.address,
+            deliveries=records,
+            count_usage=cost > 0,
+        )

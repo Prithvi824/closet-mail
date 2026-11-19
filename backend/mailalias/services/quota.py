@@ -61,6 +61,33 @@ def user_key(user_id: uuid.UUID, kind: QuotaKind, now: datetime | None = None) -
     return f"q:rep:{user_id}:{now:%Y%m%d}"
 
 
+def share_key(user_id: uuid.UUID, now: datetime | None = None) -> str:
+    """Redis key of a subdomain's sends today (its share of the global cap, UTC day).
+
+    Args:
+        user_id: Subdomain (users row) id.
+        now: Override for tests.
+    Returns:
+        "q:share:<user>:YYYYMMDD".
+    """
+    return f"q:share:{user_id}:{(now or datetime.now(UTC)):%Y%m%d}"
+
+
+def share_limit(settings: Settings, limits: Mapping[str, Any] | None) -> int:
+    """A subdomain's daily send share: its override, else the default.
+
+    Args:
+        settings: Settings (subdomain_sends_per_day).
+        limits: The subdomain's limit overrides.
+    Returns:
+        Sends allowed per UTC day.
+    """
+    value = (limits or {}).get("sends_per_day")
+    if isinstance(value, int) and value > 0:
+        return value
+    return settings.subdomain_sends_per_day
+
+
 class QuotaService:
     """Checks and consumes send quotas atomically."""
 
@@ -176,3 +203,44 @@ class QuotaService:
             None.
         """
         await self.redis.decrby(user_key(user_id, kind), cost)
+
+    async def check_share(
+        self, user_id: uuid.UUID, cost: int, limits: Mapping[str, Any] | None
+    ) -> bool:
+        """Consume from a subdomain's daily share of the global send cap.
+
+        Args:
+            user_id: Subdomain id.
+            cost: Messages about to be sent.
+            limits: The subdomain's `limits` JSON (sends_per_day overrides the default).
+        Returns:
+            True if allowed (and consumed); False if the share is used up.
+        """
+        limit = share_limit(self.settings, limits)
+        return await self._consume(share_key(user_id), limit, cost, DAY_TTL_SECONDS)
+
+    async def refund_share(self, user_id: uuid.UUID, cost: int = 1) -> None:
+        """Give units back to a subdomain's share after a send that did not happen.
+
+        Args:
+            user_id: Subdomain id.
+            cost: Units to give back.
+        Returns:
+            None.
+        """
+        await self.redis.decrby(share_key(user_id), cost)
+
+    async def consume_catchall(self, user_id: uuid.UUID, limits: Mapping[str, Any] | None) -> bool:
+        """Count one new catch-all alias against the subdomain's daily cap.
+
+        Args:
+            user_id: Subdomain id.
+            limits: The subdomain's `limits` JSON (catchall_creates_per_day overrides).
+        Returns:
+            True if another alias may be created today.
+        """
+        override = (limits or {}).get("catchall_creates_per_day")
+        limit = override if isinstance(override, int) and override > 0 else None
+        limit = limit or self.settings.subdomain_catchall_creates_per_day
+        key = f"q:catchall:{user_id}:{datetime.now(UTC):%Y%m%d}"
+        return await self._consume(key, limit, 1, DAY_TTL_SECONDS)

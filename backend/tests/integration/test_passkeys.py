@@ -9,6 +9,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # local imports
+from mailalias.models import UserRole
 from mailalias.security import webauthn as passkey
 from mailalias.services.users import UserService
 
@@ -95,7 +96,7 @@ async def test_registration_then_passkey_login(
     client: httpx.AsyncClient, session: AsyncSession, fake_verifier: dict[str, Any]
 ) -> None:
     """Options carry our RP; after registering, login needs the passkey and it completes MFA."""
-    await UserService(session).create_user("pia", "pia@example.com", PASSWORD)
+    await UserService(session).create_user("pia", "pia@example.com", PASSWORD, UserRole.ADMIN)
     await session.commit()
     assert (await _login(client))["mfa_required"] is False
     options = await _register(client)
@@ -122,7 +123,7 @@ async def test_failed_and_replayed_assertions_are_rejected(
     client: httpx.AsyncClient, session: AsyncSession, fake_verifier: dict[str, Any]
 ) -> None:
     """A bad signature fails; the challenge is single-use; unknown credentials fail."""
-    await UserService(session).create_user("pia", "pia@example.com", PASSWORD)
+    await UserService(session).create_user("pia", "pia@example.com", PASSWORD, UserRole.ADMIN)
     await session.commit()
     await _login(client)
     await _register(client)
@@ -152,7 +153,7 @@ async def test_delete_passkey_removes_the_second_factor(
     client: httpx.AsyncClient, session: AsyncSession, fake_verifier: dict[str, Any]
 ) -> None:
     """Without passkeys (and no TOTP) login is single-factor again."""
-    await UserService(session).create_user("pia", "pia@example.com", PASSWORD)
+    await UserService(session).create_user("pia", "pia@example.com", PASSWORD, UserRole.ADMIN)
     await session.commit()
     await _login(client)
     await _register(client)

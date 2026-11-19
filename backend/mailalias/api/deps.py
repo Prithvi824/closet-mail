@@ -8,19 +8,23 @@ from typing import Annotated
 
 # 3rd party imports
 from fastapi import Depends, Request
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # local imports
-from mailalias.api.errors import Forbidden, Unauthorized
+from mailalias.api.errors import Conflict, Forbidden, NotFound, Unauthorized
 from mailalias.config import Settings, get_settings
 from mailalias.db import get_redis, get_session
 from mailalias.integrations.cloudflare_api import CloudflareApi
+from mailalias.integrations.cloudflare_dns import CloudflareDns
+from mailalias.integrations.cloudflare_kv import CloudflareKv
 from mailalias.integrations.cloudflare_queue import CloudflareQueueAdmin
 from mailalias.integrations.r2 import ObjectStore, R2Storage
 from mailalias.mail.outbound import OutboundMailer, get_mailer
 from mailalias.models import ApiToken, User, UserRole
 from mailalias.security.sessions import SESSION_COOKIE, SessionData, SessionStore
 from mailalias.services.api_tokens import TokenService
+from mailalias.services.subdomain_status import SubdomainStatusChecker
 from mailalias.services.system_mail import SystemMailService
 
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
@@ -71,6 +75,29 @@ async def get_queue_admin(settings: AppSettings) -> AsyncIterator[CloudflareQueu
 
 
 QueueAdmin = Annotated[CloudflareQueueAdmin, Depends(get_queue_admin)]
+
+
+async def get_status_checker(
+    db: DbSession, settings: AppSettings
+) -> AsyncIterator[SubdomainStatusChecker]:
+    """Subdomain status checker on the Cloudflare API (FastAPI dependency; overridden in tests).
+
+    Args:
+        db: Database session.
+        settings: Settings (zone and KV namespace ids).
+    Returns:
+        An async iterator yielding the checker; the HTTP client is closed afterwards.
+    """
+    api = CloudflareApi(settings)
+    try:
+        dns = CloudflareDns(api, settings.cf_zone_id) if settings.cf_zone_id else None
+        kv = CloudflareKv(api, settings.cf_kv_namespace_id)
+        yield SubdomainStatusChecker(db, dns, kv, settings)
+    finally:
+        await api.aclose()
+
+
+StatusChecker = Annotated[SubdomainStatusChecker, Depends(get_status_checker)]
 
 
 def get_system_mail(
@@ -129,7 +156,8 @@ async def current_principal(request: Request, db: DbSession, sessions: Sessions)
         db: Database session.
         sessions: Session store.
     Returns:
-        The principal. Raises Unauthorized if missing, invalid, disabled, or MFA is pending.
+        The principal. Raises Unauthorized if missing, invalid, disabled, not the operator
+        (sessions only), or MFA is pending.
     """
     auth = request.headers.get("Authorization", "")
     if auth.lower().startswith("bearer "):
@@ -140,7 +168,12 @@ async def current_principal(request: Request, db: DbSession, sessions: Sessions)
         return Principal(user, token)
     _, data = await current_session(request, sessions)
     session_user = await db.get(User, uuid.UUID(data.user_id))
-    if session_user is None or session_user.disabled_at is not None:
+    # Only the operator signs in; a session left from before the lockdown is refused.
+    if (
+        session_user is None
+        or session_user.disabled_at is not None
+        or session_user.role != UserRole.ADMIN
+    ):
         raise Unauthorized("Not signed in")
     # Sessions start with mfa_passed=False only when the user has TOTP or passkeys.
     if not data.mfa_passed:
@@ -197,18 +230,49 @@ def token_scopes(read: str, write: str | None = None) -> Callable[..., Awaitable
 CurrentUser = Annotated[User, Depends(current_user)]
 
 
-async def require_admin(user: CurrentUser, principal: CurrentPrincipal) -> User:
-    """Restrict a route to admins signed in with a browser session (never an API token).
+async def require_operator(principal: CurrentPrincipal) -> User:
+    """Restrict a route to the operator signed in with a browser session (never an API token).
 
     Args:
-        user: Authenticated user.
         principal: Caller (rejected when it is a token).
     Returns:
-        The user if admin. Raises Forbidden otherwise.
+        The operator. Raises Forbidden otherwise.
     """
-    if principal.token is not None or user.role != UserRole.ADMIN:
-        raise Forbidden("Admin only")
-    return user
+    if principal.token is not None or principal.user.role != UserRole.ADMIN:
+        raise Forbidden("Operator only")
+    return principal.user
 
 
-AdminUser = Annotated[User, Depends(require_admin)]
+Operator = Annotated[User, Depends(require_operator)]
+
+
+async def current_subdomain(
+    subdomain: str, request: Request, db: DbSession, principal: CurrentPrincipal
+) -> User:
+    """The subdomain named in the path: any one for the operator, only its own for a token.
+
+    Args:
+        subdomain: Subdomain label from /subdomains/{subdomain}.
+        request, db, principal: Request (token scope flag, method), session, caller.
+    Returns:
+        The subdomain's users row. Raises NotFound, Forbidden, or Conflict (retired, writes).
+    """
+    label = subdomain.strip().lower()
+    if principal.token is not None:
+        if label != principal.user.username:
+            raise NotFound("Subdomain not found")
+        if not getattr(request.state, TOKEN_SCOPE_OK, False):
+            raise Forbidden("API tokens cannot use this endpoint", code="token_not_allowed")
+        found: User | None = principal.user
+    else:
+        if principal.user.role != UserRole.ADMIN:
+            raise Forbidden("Operator only")
+        found = await db.scalar(select(User).where(User.username == label))
+    if found is None:
+        raise NotFound("Subdomain not found")
+    if found.retired_at is not None and request.method not in SAFE_METHODS:
+        raise Conflict("This subdomain is retired", code="retired")
+    return found
+
+
+CurrentSubdomain = Annotated[User, Depends(current_subdomain)]

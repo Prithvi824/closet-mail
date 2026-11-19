@@ -7,7 +7,7 @@ import uuid
 from fastapi import APIRouter, Depends, Query, status
 
 # local imports
-from mailalias.api.deps import AppSettings, CurrentUser, DbSession, token_scopes
+from mailalias.api.deps import AppSettings, CurrentSubdomain, DbSession, token_scopes
 from mailalias.db import get_redis
 from mailalias.models import AliasState
 from mailalias.schemas.aliases import (
@@ -28,7 +28,7 @@ router = APIRouter(
 
 @router.get("")
 async def list_aliases(
-    user: CurrentUser,
+    user: CurrentSubdomain,
     db: DbSession,
     settings: AppSettings,
     q: str | None = Query(default=None, max_length=100),
@@ -61,7 +61,7 @@ async def list_aliases(
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_alias(
-    body: AliasCreate, user: CurrentUser, db: DbSession, settings: AppSettings
+    body: AliasCreate, user: CurrentSubdomain, db: DbSession, settings: AppSettings
 ) -> AliasResponse:
     """Create an alias.
 
@@ -88,7 +88,7 @@ async def create_alias(
 
 @router.post("/bulk")
 async def bulk_action(
-    body: AliasBulk, user: CurrentUser, db: DbSession, settings: AppSettings
+    body: AliasBulk, user: CurrentSubdomain, db: DbSession, settings: AppSettings
 ) -> dict[str, int]:
     """Activate, deactivate or delete many aliases.
 
@@ -107,7 +107,7 @@ async def bulk_action(
 
 @router.get("/{alias_id}")
 async def get_alias(
-    alias_id: uuid.UUID, user: CurrentUser, db: DbSession, settings: AppSettings
+    alias_id: uuid.UUID, user: CurrentSubdomain, db: DbSession, settings: AppSettings
 ) -> AliasResponse:
     """Fetch one alias.
 
@@ -126,7 +126,7 @@ async def get_alias(
 async def update_alias(
     alias_id: uuid.UUID,
     body: AliasUpdate,
-    user: CurrentUser,
+    user: CurrentSubdomain,
     db: DbSession,
     settings: AppSettings,
 ) -> AliasResponse:
@@ -158,7 +158,7 @@ async def update_alias(
 
 @router.delete("/{alias_id}")
 async def delete_alias(
-    alias_id: uuid.UUID, user: CurrentUser, db: DbSession, settings: AppSettings
+    alias_id: uuid.UUID, user: CurrentSubdomain, db: DbSession, settings: AppSettings
 ) -> AliasResponse:
     """Soft-delete an alias (restorable for 30 days).
 
@@ -177,7 +177,7 @@ async def delete_alias(
 
 @router.post("/{alias_id}/restore")
 async def restore_alias(
-    alias_id: uuid.UUID, user: CurrentUser, db: DbSession, settings: AppSettings
+    alias_id: uuid.UUID, user: CurrentSubdomain, db: DbSession, settings: AppSettings
 ) -> AliasResponse:
     """Restore a deleted alias (comes back inactive).
 
@@ -196,7 +196,7 @@ async def restore_alias(
 
 @router.post("/{alias_id}/forget", status_code=status.HTTP_204_NO_CONTENT)
 async def forget_alias(
-    alias_id: uuid.UUID, user: CurrentUser, db: DbSession, settings: AppSettings
+    alias_id: uuid.UUID, user: CurrentSubdomain, db: DbSession, settings: AppSettings
 ) -> None:
     """Permanently detach an alias; its address can never be reused.
 

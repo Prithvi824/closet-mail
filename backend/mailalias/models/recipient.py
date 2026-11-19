@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 
 # 3rd party imports
-from sqlalchemy import ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import ForeignKey, String, Text, UniqueConstraint, false
 from sqlalchemy.orm import Mapped, mapped_column
 
 # local imports
@@ -32,6 +32,8 @@ class Recipient(UUIDPrimaryKey, Timestamps, Base):
     pgp_protect_subject: Mapped[bool] = mapped_column(default=False)
     disabled_at: Mapped[datetime | None]
     consecutive_hard_bounces: Mapped[int] = mapped_column(default=0)
+    # Aliases with no inbox ticked forward to every usable inbox with this flag.
+    forward_by_default: Mapped[bool] = mapped_column(default=False, server_default=false())
 
     @property
     def is_usable(self) -> bool:

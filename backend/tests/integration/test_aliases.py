@@ -10,36 +10,43 @@ import pytest
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# local imports
 from mailalias.config import get_settings
-from mailalias.models import Alias, AliasState, User
+from mailalias.models import Alias, AliasState, User, UserRole
 from mailalias.services import kv_sync
 from mailalias.services.aliases import AliasService
 from mailalias.services.users import UserService
 from tests.fakes import FakeKv
 
+# local imports
+from tests.integration.harness import sub
+
+BASE = sub("gina", "")  # this file's subdomain scope
+
 pytestmark = pytest.mark.usefixtures("relaxed_rate_limits")
 PASSWORD = "correct horse battery"
-API = "/api/v1/aliases"
+API = f"{BASE}/aliases"
 
 
-async def _user(session: AsyncSession, username: str) -> User:
+async def _user(session: AsyncSession, username: str, role: UserRole = UserRole.USER) -> User:
     """Create a committed user.
 
     Args:
         session: Test session.
         username: Username.
+        role: Role (only the operator, an admin, can sign in).
     Returns:
         The user.
     """
-    user = await UserService(session).create_user(username, f"{username}@example.com", PASSWORD)
+    user = await UserService(session).create_user(
+        username, f"{username}@example.com", PASSWORD, role
+    )
     await session.commit()
     return user
 
 
 @pytest.fixture
 async def gina(client: httpx.AsyncClient, session: AsyncSession) -> User:
-    """User "gina", logged in on `client`.
+    """Operator "gina", logged in on `client`.
 
     Args:
         client: HTTP client.
@@ -47,7 +54,7 @@ async def gina(client: httpx.AsyncClient, session: AsyncSession) -> User:
     Returns:
         The user.
     """
-    user = await _user(session, "gina")
+    user = await _user(session, "gina", UserRole.ADMIN)
     response = await client.post(
         "/api/v1/auth/login", json={"username": "gina", "password": PASSWORD}
     )
@@ -231,7 +238,7 @@ async def test_search_and_labels(client: httpx.AsyncClient) -> None:
     Returns:
         None.
     """
-    label = (await client.post("/api/v1/labels", json={"name": "shopping"})).json()
+    label = (await client.post(f"{BASE}/labels", json={"name": "shopping"})).json()
     tagged = await client.post(
         API, json={"local_part": "store1", "description": "Bike Shop", "label_ids": [label["id"]]}
     )
@@ -242,7 +249,7 @@ async def test_search_and_labels(client: httpx.AsyncClient) -> None:
     assert [a["local_part"] for a in found["items"]] == ["store1"]
     by_label = (await client.get(API, params={"label": label["id"]})).json()
     assert by_label["total"] == 1
-    duplicate = await client.post("/api/v1/labels", json={"name": "shopping"})
+    duplicate = await client.post(f"{BASE}/labels", json={"name": "shopping"})
     assert duplicate.status_code == 409
 
 
@@ -258,7 +265,7 @@ async def test_subdomain_toggle_marks_kv(
     Returns:
         None.
     """
-    response = await client.patch("/api/v1/me/settings", json={"subdomain_catchall": True})
+    response = await client.patch(f"{BASE}/settings", json={"subdomain_catchall": True})
     assert response.status_code == 200
     assert ("kv.sync_subdomain", str(gina.id)) in dispatched
 
@@ -318,3 +325,31 @@ async def test_kv_sync_values_and_reconcile(session: AsyncSession) -> None:
     assert drifted.data["a:on@closetcompute.online"] == "A"
     await kv_sync.reconcile(session, drifted, get_redis(), delete_extra=True)  # type: ignore[arg-type]
     assert "a:stale@closetcompute.online" not in drifted.data
+
+
+async def test_reconcile_writes_only_keys_whose_value_differs(session: AsyncSession) -> None:
+    """A repeat reconcile writes nothing; one changed value writes exactly one key.
+
+    Args:
+        session: Test session.
+    Returns:
+        None.
+    """
+    from mailalias.db import get_redis
+
+    user = await _user(session, "kim")
+    service = AliasService(session, get_settings())
+    first = await service.create(user, local_part="one")
+    await service.create(user, local_part="two")
+    await session.commit()
+    kv = FakeKv()
+    summary = await kv_sync.reconcile(session, kv, get_redis(), delete_extra=False)  # type: ignore[arg-type]
+    assert summary["written"] == summary["keys"] > 0
+    kv.writes = 0
+    summary = await kv_sync.reconcile(session, kv, get_redis(), delete_extra=False)  # type: ignore[arg-type]
+    assert (summary["written"], kv.writes) == (0, 0)
+    first.state = AliasState.INACTIVE
+    await session.commit()
+    summary = await kv_sync.reconcile(session, kv, get_redis(), delete_extra=False)  # type: ignore[arg-type]
+    assert (summary["written"], kv.writes) == (1, 1)
+    assert kv.data["a:one@closetcompute.online"] == "I"
